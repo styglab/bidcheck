@@ -23,7 +23,7 @@ describe("CompanySelector", () => {
     expect(screen.getByRole("button", { name: /ABC소프트/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /ABC소프트/ }));
     await user.click(screen.getByRole("button", { name: "검토 업체 해제" }));
-    expect(screen.getByRole("button", { name: "+ 업체 선택" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ 회사 적용" })).toBeInTheDocument();
   });
   it("restores the selected company from localStorage", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(demoCompany));

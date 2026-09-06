@@ -1,4 +1,5 @@
 from datetime import date
+from time import monotonic
 
 from fastapi import APIRouter, Query
 
@@ -6,10 +7,16 @@ from app.integrations.teoria import teoria_client
 from app.services.teoria_adapter import objects_of
 
 router = APIRouter()
+_search_cache: dict[str, tuple[float, dict]] = {}
+_SEARCH_CACHE_TTL_SECONDS = 600
 
 
 @router.get("/search")
 async def search_companies(q: str = Query(min_length=2, max_length=100)):
+    cache_key = q.strip().lower()
+    cached = _search_cache.get(cache_key)
+    if cached and monotonic() - cached[0] < _SEARCH_CACHE_TTL_SECONDS:
+        return cached[1]
     digits = "".join(ch for ch in q if ch.isdigit())
     if len(digits) == 10:
         data = await teoria_client.execute("get_company_procurement_profile", {"business_registration_number": digits}, max_objects=500, provenance=True)
@@ -33,7 +40,12 @@ async def search_companies(q: str = Query(min_length=2, max_length=100)):
         for obj in legal_entities + suppliers:
             p = obj.get("properties", {})
             items.append({"id": obj.get("id"), "business_registration_number": p.get("business_registration_number"), "name": p.get("company_name") or p.get("business_name") or p.get("name"), "properties": p})
-    return {"items": items, "count": len(items), "truncated": data.get("truncated", False), "registry_version": data.get("registry", {}).get("version")}
+    result = {"items": items, "count": len(items), "truncated": data.get("truncated", False), "registry_version": data.get("registry", {}).get("version")}
+    if len(_search_cache) >= 100:
+        oldest_key = min(_search_cache, key=lambda key: _search_cache[key][0])
+        _search_cache.pop(oldest_key, None)
+    _search_cache[cache_key] = (monotonic(), result)
+    return result
 
 
 @router.get("/{business_number}/profile")

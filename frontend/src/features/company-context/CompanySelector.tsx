@@ -1,10 +1,12 @@
 import * as Popover from "@radix-ui/react-popover";
-import { Building2, ChevronDown, Search, X } from "lucide-react";
+import { Building2, ChevronDown, LoaderCircle, Search, X } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCompanySearch } from "./api";
 import { useCompany } from "./useCompany";
 
-export function CompanySelector({ compact = false }: { compact?: boolean }) {
+export function CompanySelector({ compact = false, mode = "select" }: { compact?: boolean; mode?: "select" | "apply" | "change" }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
@@ -14,8 +16,8 @@ export function CompanySelector({ compact = false }: { compact?: boolean }) {
     <Popover.Root open={open} onOpenChange={setOpen}>
       <div className={`company-selector ${compact ? "compact" : ""}`}>
         <Popover.Trigger asChild>
-          <button className={`company-trigger ${currentCompany ? "is-selected" : ""}`} type="button">
-            <span>{currentCompany?.name ?? "+ 업체 선택"}</span>
+          <button className={`company-trigger ${currentCompany ? "is-selected" : ""} mode-${mode}`} type="button">
+            <span>{mode === "apply" ? "회사 프로필 적용" : mode === "change" ? "회사 변경" : currentCompany?.name ?? "+ 회사 적용"}</span>
             <ChevronDown size={15} />
           </button>
         </Popover.Trigger>
@@ -33,22 +35,28 @@ export function CompanySelector({ compact = false }: { compact?: boolean }) {
               </Popover.Close>
             </div>
             <form
-              className="popover-search"
+              className="grid grid-cols-[minmax(0,1fr)_72px] gap-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 setSearch(input.trim());
               }}
             >
-              <Search size={17} />
-              <input
-                autoFocus
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="회사명 또는 사업자등록번호"
-              />
-              <button type="submit">검색</button>
+              <div className="relative min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Input
+                  className="h-10 w-full pl-9 text-sm"
+                  autoFocus
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder="회사명 또는 사업자번호"
+                  aria-label="회사명 또는 사업자등록번호"
+                />
+              </div>
+              <Button className="h-10 bg-emerald-800 hover:bg-emerald-700" type="submit" disabled={input.trim().length < 2 || results.isFetching}>
+                {results.isFetching ? <LoaderCircle className="animate-spin" aria-label="검색 중" /> : "검색"}
+              </Button>
             </form>
-            {results.isFetching && <div className="company-search-state">업체를 조회하고 있습니다.</div>}
+            {results.isFetching && <div className="company-search-state flex items-center justify-center gap-2" role="status" aria-live="polite"><LoaderCircle className="animate-spin" size={17} /> 회사 정보를 조회하고 있습니다. 잠시만 기다려 주세요.</div>}
             {results.isError && <div className="company-search-state error">{results.error.message}</div>}
             {results.data?.items.map((item) => {
               const number = item.business_registration_number ?? "";

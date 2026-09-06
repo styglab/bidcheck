@@ -14,6 +14,8 @@ export function useCompanySearch(query: string) {
         `/companies/search?q=${encodeURIComponent(query)}`,
       ),
     enabled: query.trim().length >= 2,
-    staleTime: 300_000,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+    retry: 1,
   });
 }
