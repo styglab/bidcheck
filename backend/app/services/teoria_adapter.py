@@ -26,6 +26,51 @@ def requirement(obj: dict[str, Any]) -> dict[str, Any]:
     return {"id": p.get("requirement_id") or obj.get("id"), "local_id": p.get("local_id"), "type": p.get("requirement_type", "custom"), "operator": p.get("operator"), "title": (value or {}).get("text") if isinstance(value, dict) else str(value or "참가요건"), "value": value, "original_text": p.get("original_text"), "proposition_text": p.get("proposition_text"), "mandatory": p.get("mandatory", True), "confidence": p.get("confidence"), "evidence_summary": p.get("evidence_summary"), "proof_summary": p.get("proof_summary"), "comparison_mode": p.get("comparison_mode"), "observed_at": observed}
 
 
+def requirement_evidence(obj: dict[str, Any]) -> dict[str, Any]:
+    p = obj.get("properties", {})
+    return {
+        "id": p.get("evidence_id") or obj.get("id"),
+        "requirement_id": p.get("requirement_id"),
+        "source_type": p.get("source_type"),
+        "document_id": p.get("document_id"),
+        "source_document": p.get("source_document"),
+        "source_page": p.get("source_page"),
+        "source_clause": p.get("source_clause"),
+        "source_excerpt": p.get("source_excerpt"),
+        "source_url": p.get("source_url"),
+    }
+
+
+def participation_finding(obj: dict[str, Any]) -> dict[str, Any]:
+    p = obj.get("properties", {})
+    return {
+        "id": p.get("finding_id") or obj.get("id"),
+        "category": p.get("category"),
+        "title": p.get("title"),
+        "description": p.get("description"),
+        "deadline_text": p.get("deadline_text"),
+        "failure_effect": p.get("failure_effect"),
+        "importance": p.get("importance"),
+        "review_status": p.get("review_status"),
+        "competitive_effect": p.get("competitive_effect"),
+        "legitimate_justification": p.get("legitimate_justification"),
+        "evidence": [],
+    }
+
+
+def participation_finding_evidence(obj: dict[str, Any]) -> dict[str, Any]:
+    p = obj.get("properties", {})
+    return {
+        "id": p.get("evidence_id") or obj.get("id"),
+        "finding_id": p.get("finding_id"),
+        "source_document": p.get("source_document"),
+        "source_page": p.get("source_page"),
+        "source_clause": p.get("source_clause"),
+        "source_excerpt": p.get("source_excerpt"),
+        "source_url": p.get("source_url"),
+    }
+
+
 def split_notice_id(notice_id: str) -> tuple[str, str]:
     parts = notice_id.rsplit(":", 1)
     if len(parts) != 2 or not all(parts): raise ValueError("invalid notice id")

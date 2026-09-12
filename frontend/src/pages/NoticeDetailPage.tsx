@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageContainer } from "@/components/layout/page-container";
 import { StatusState } from "@/components/common/status-state";
+import { ParticipationFindingsSection } from "../features/notices/ParticipationFindingsSection";
 
 function formatMoney(value?: number) {
   return value == null ? "미정" : `${value.toLocaleString("ko-KR")}원`;
@@ -52,7 +53,7 @@ export function NoticeDetailPage() {
         </div>
       </main>
     );
-  const { notice, requirements, requirement_state } = query.data!;
+  const { notice, requirements, requirement_state, participation_findings } = query.data!;
   const requirementAssessment = (requirementId: string, localId?: string) =>
     assessment.data?.requirement_assessments.find((item) => {
       const candidate = String(item.requirement_id ?? item.bid_requirement_id ?? item.local_id ?? "");
@@ -127,6 +128,7 @@ export function NoticeDetailPage() {
           <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarClock size={13} />자동 검토 결과는 최종 입찰 참가 판단을 대신하지 않습니다.</p>
         </CardContent></Card>
       )}
+      <ParticipationFindingsSection findings={participation_findings ?? []} />
       <section className="mt-10">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div><p className="text-sm font-semibold text-blue-800 dark:text-blue-300">입찰 조건</p><h2 className="mt-1 text-xl font-bold text-foreground">참가요건 {requirements.length}개</h2></div>
@@ -154,7 +156,7 @@ export function NoticeDetailPage() {
                 <div><span className="mb-1 block text-xs text-muted-foreground md:hidden">공고 요구사항</span><p className="text-sm leading-6 text-muted-foreground">{requirement.proposition_text ?? requirement.original_text ?? "요구사항 원문을 확인하세요."}</p>{requirement.proof_summary && <small className="mt-1 block text-xs text-muted-foreground">확인자료 · {requirement.proof_summary}</small>}</div>
                 <div><span className="mb-1 block text-xs text-muted-foreground md:hidden">회사 정보</span><p className="text-sm leading-6 text-muted-foreground">{companyEvidence}</p></div>
                 <div className="md:text-right">{status ? <Badge className={status.className === "satisfied" ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" : status.className === "unsatisfied" ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300" : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300"}>{status.icon}{status.label}</Badge> : <Badge variant="secondary">분석 전</Badge>}</div>
-                <details className="md:col-start-2 md:col-end-5"><summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-blue-800 dark:text-blue-300">판정 및 원문 근거 보기</summary><div className="mt-3 rounded-lg bg-muted/50 p-3 text-xs leading-5 text-muted-foreground">{result && <p className="mb-2">{String(result.judgment_summary ?? result.reason_summary ?? result.reason_code ?? "판정 근거를 확인해 주세요.")}</p>}<p>{requirement.original_text}</p><small className="mt-2 block text-muted-foreground">기준시점 · {requirement.observed_at ? `${formatKoreanDateTime(requirement.observed_at)} KST` : "미상"}</small></div></details>
+                <details className="md:col-start-2 md:col-end-5"><summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-blue-800 dark:text-blue-300">판정 및 원문 근거 보기</summary><div className="mt-3 rounded-lg bg-muted/50 p-3 text-xs leading-5 text-muted-foreground">{result && <p className="mb-2">{String(result.judgment_summary ?? result.reason_summary ?? result.reason_code ?? "판정 근거를 확인해 주세요.")}</p>}{requirement.evidence?.length > 0 ? <div className="space-y-3">{requirement.evidence.map((evidence) => <div className="border-l-2 border-border pl-3" key={evidence.id}><p className="font-medium text-foreground">{evidence.source_document ?? "첨부 문서"}{evidence.source_page != null ? ` · ${evidence.source_page}페이지` : ""}{evidence.source_clause ? ` · ${evidence.source_clause}` : ""}</p>{evidence.source_excerpt && <p className="mt-1">{evidence.source_excerpt}</p>}{evidence.source_url && <a className="mt-1 inline-flex items-center gap-1 font-medium text-blue-800 hover:underline dark:text-blue-300" href={evidence.source_url} target="_blank" rel="noreferrer">원문 열기 <ExternalLink size={12} /></a>}</div>)}</div> : <p>{requirement.original_text ?? "연결된 문서 근거가 없습니다."}</p>}<small className="mt-2 block text-muted-foreground">기준시점 · {requirement.observed_at ? `${formatKoreanDateTime(requirement.observed_at)} KST` : "미상"}</small></div></details>
               </article>;
             })}
           </div>

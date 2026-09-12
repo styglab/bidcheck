@@ -106,18 +106,19 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
             <div className="relative z-10 flex items-center justify-between gap-3 lg:block lg:text-right">
               {currentCompany ? (
                 <>
-                  {previews.isFetching ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><LoaderCircle className="animate-spin" size={14} />요건 검토 중</span>
-                  ) : previews.isError ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />검토 불러오기 실패</span>
-                  ) : preview?.status === "error" ? (
+                  {preview?.status === "error" ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />{assessmentErrorLabel(preview.error_code)}</span>
                   ) : preview ? (
                     <div>
                       <strong className={`text-xs ${preview.outcome === "unsatisfied" ? "text-red-700 dark:text-red-300" : preview.outcome === "needs_review" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>{assessmentOutcomeLabel(preview)}</strong>
+                      {previews.isFetching && <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground"><LoaderCircle className="animate-spin" size={11} />갱신 중</span>}
                       <p className="mt-1 text-[11px] text-muted-foreground">충족 {preview.satisfied_count ?? 0} · 미충족 {preview.unsatisfied_count ?? 0} · 확인 {preview.needs_review_count ?? 0}</p>
                       {preview.issues?.map((issue, index) => <p className="mt-1 truncate text-[11px] text-muted-foreground" title={issue.summary} key={`${issue.requirement_id ?? index}-${index}`}>· {issue.summary ?? "상세 확인이 필요한 요건"}</p>)}
                     </div>
+                  ) : previews.isFetching ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><LoaderCircle className="animate-spin" size={14} />요건 검토 중</span>
+                  ) : previews.isError ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />검토 불러오기 실패</span>
                   ) : notice.requires_review ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />원문 확인 필요</span>
                   ) : (

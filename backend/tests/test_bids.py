@@ -103,6 +103,52 @@ def test_search_accepts_other_work_type(monkeypatch):
     assert all(call["work_type"] == "other" for call in calls)
 
 
+def test_notice_detail_attaches_document_evidence_to_requirement(monkeypatch):
+    async def execute(capability, inputs, **options):
+        if capability == "get_bid_notice":
+            return {"objects": [_notice("NOTICE:000", "open", "2026-09-01T00:00:00+00:00")]}
+        if capability == "get_bid_requirements":
+            return {
+            "objects": [
+                {"id": "req-1", "type": "bid_requirement", "properties": {"requirement_id": "req-1", "value_text": '{"text":"면허"}'}},
+                {"id": "ev-1", "type": "bid_requirement_evidence", "properties": {"evidence_id": "ev-1", "requirement_id": "req-1", "source_type": "document", "source_document": "공고문.hwpx", "source_page": 3, "source_clause": "입찰참가자격", "source_excerpt": "입찰참가자는 ...", "source_url": "https://example.com/notice"}},
+            ]
+            }
+        return {"registry": {"version": "2026.09.12.4"}, "objects": []}
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:000")
+
+    assert response.status_code == 200
+    evidence = response.json()["requirements"][0]["evidence"][0]
+    assert evidence["source_document"] == "공고문.hwpx"
+    assert evidence["source_page"] == 3
+
+
+def test_notice_detail_attaches_evidence_to_participation_finding(monkeypatch):
+    async def execute(capability, inputs, **options):
+        if capability == "get_bid_notice":
+            return {"objects": [_notice("NOTICE:000", "open", "2026-09-01T00:00:00+00:00")]}
+        if capability == "get_bid_requirements":
+            return {"objects": []}
+        return {
+            "registry": {"version": "2026.09.12.4"},
+            "objects": [
+                {"id": "finding-object", "type": "bid_participation_finding", "properties": {"finding_id": "finding-1", "category": "participation_note", "title": "서류 제출", "review_status": "needs_review"}},
+                {"id": "evidence-object", "type": "bid_participation_finding_evidence", "properties": {"evidence_id": "evidence-1", "finding_id": "finding-1", "source_document": "공고문.pdf", "source_page": 2, "source_excerpt": "서류를 제출해야 한다."}},
+            ],
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:000")
+
+    assert response.status_code == 200
+    finding = response.json()["participation_findings"][0]
+    assert finding["review_status"] == "needs_review"
+    assert finding["evidence"][0]["source_page"] == 2
+    assert response.json()["registry_version"] == "2026.09.12.4"
+
+
 def test_batch_assessment_returns_outcome_items(monkeypatch):
     calls = []
 

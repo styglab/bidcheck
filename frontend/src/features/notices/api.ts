@@ -34,6 +34,38 @@ export type Requirement = {
   proof_summary?: string;
   comparison_mode?: string;
   observed_at?: string;
+  evidence: RequirementEvidence[];
+};
+export type RequirementEvidence = {
+  id: string;
+  requirement_id?: string;
+  source_type?: string;
+  document_id?: string;
+  source_document?: string;
+  source_page?: number;
+  source_clause?: string;
+  source_excerpt?: string;
+  source_url?: string;
+};
+export type ParticipationFinding = {
+  id: string;
+  category: "participation_note" | "performance_obligation" | "competition_risk_signal";
+  title?: string;
+  description?: string;
+  deadline_text?: string;
+  failure_effect?: string;
+  importance?: string;
+  review_status?: string;
+  competitive_effect?: string;
+  legitimate_justification?: string;
+  evidence: Array<{
+    id: string;
+    source_document?: string;
+    source_page?: number;
+    source_clause?: string;
+    source_excerpt?: string;
+    source_url?: string;
+  }>;
 };
 export type NoticeFilters = {
   q?: string;
@@ -59,6 +91,7 @@ type DetailResponse = {
   notice: Notice;
   requirements: Requirement[];
   requirement_state: string;
+  participation_findings: ParticipationFinding[];
   registry_version?: string;
 };
 export function useNotices(filters: NoticeFilters = {}) {

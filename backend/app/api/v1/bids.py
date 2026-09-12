@@ -5,7 +5,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
-from app.services.teoria_adapter import notice, objects_of, requirement, split_notice_id
+from app.services.teoria_adapter import (
+    notice,
+    objects_of,
+    participation_finding,
+    participation_finding_evidence,
+    requirement,
+    requirement_evidence,
+    split_notice_id,
+)
 
 router = APIRouter()
 
@@ -135,8 +143,53 @@ async def get_notice(notice_id: str):
     try:
         req_data = await teoria_client.execute("get_bid_requirements", {"notice_number": number, "notice_order": order}, max_objects=500, provenance=True)
         requirements = [requirement(obj) for obj in objects_of(req_data, "bid_requirement")]
+        evidence = [requirement_evidence(obj) for obj in objects_of(req_data, "bid_requirement_evidence")]
+        evidence_by_requirement: dict[str, list[dict]] = {}
+        for item in evidence:
+            if item["requirement_id"]:
+                evidence_by_requirement.setdefault(str(item["requirement_id"]), []).append(item)
+        for item in requirements:
+            item["evidence"] = evidence_by_requirement.get(str(item["id"]), [])
+            if item.get("local_id"):
+                item["evidence"] += evidence_by_requirement.get(str(item["local_id"]), [])
         requirement_state = "ready"
     except HTTPException as exc:
         if exc.status_code == 409: requirements, requirement_state = [], "not_extracted"
         else: raise
-    return {"notice": notice(found[0]), "requirements": requirements, "requirement_state": requirement_state, "registry_version": base.get("registry", {}).get("version")}
+    try:
+        finding_data = await teoria_client.execute(
+            "get_bid_participation_findings",
+            {"notice_number": number, "notice_order": order},
+            max_objects=500,
+            provenance=True,
+        )
+        participation_findings = [
+            participation_finding(obj)
+            for obj in objects_of(finding_data, "bid_participation_finding")
+        ]
+        finding_evidence = [
+            participation_finding_evidence(obj)
+            for obj in objects_of(finding_data, "bid_participation_finding_evidence")
+        ]
+        evidence_by_finding: dict[str, list[dict]] = {}
+        for item in finding_evidence:
+            if item["finding_id"]:
+                evidence_by_finding.setdefault(str(item["finding_id"]), []).append(item)
+        for item in participation_findings:
+            item["evidence"] = evidence_by_finding.get(str(item["id"]), [])
+    except HTTPException as exc:
+        if exc.status_code in {404, 409}:
+            participation_findings = []
+        else:
+            raise
+    return {
+        "notice": notice(found[0]),
+        "requirements": requirements,
+        "requirement_state": requirement_state,
+        "participation_findings": participation_findings,
+        "registry_version": (
+            finding_data.get("registry", {}).get("version")
+            if "finding_data" in locals()
+            else base.get("registry", {}).get("version")
+        ),
+    }
