@@ -43,7 +43,8 @@ POST /v1/capabilities/search_bid_notices:execute
     "notice_published_at_to": "2026-08-13T23:59:59+09:00",
     "query": "정보시스템 운영",
     "work_type": "service",
-    "bid_status": "open",
+    "bid_statuses": ["scheduled", "open", "unknown"],
+    "notice_status": "active",
     "bid_deadline_at_from": "2026-08-14T00:00:00+09:00",
     "bid_deadline_at_to": "2026-08-31T23:59:59+09:00",
     "contract_method_name": "제한경쟁",
@@ -173,6 +174,27 @@ POST /v1/capabilities/assess_company_bid_eligibility:execute
 | `needs_review` | 확인 필요 | 근거 부족, 지원하지 않는 규칙, 모호성 또는 원문 검토 필요 |
 
 `needs_review`를 `unsatisfied`로 간주하거나 “입찰 불가”로 단정하면 안 된다. 최종 법적 판단이 아니라 공식 데이터와 추출된 공고요건을 바탕으로 한 의사결정 지원 결과로 표시한다.
+
+### 3.1 목록용 일괄 평가
+
+공고 목록에서는 현재 페이지의 공고 ID를 한 번에 평가한다.
+
+```http
+POST /v1/capabilities/assess_company_bid_eligibilities:execute
+```
+
+```json
+{
+  "inputs": {
+    "business_registration_number": "1234567890",
+    "bid_notice_ids": ["R26BK01725727:000", "R26BK01726356:000"],
+    "participation_mode": "single"
+  },
+  "options": {"max_objects": 100}
+}
+```
+
+`outcome.items`는 공고별 `status`, `outcome`, 세 가지 결과 개수와 최대 2개의 `issues`를 반환한다. `status=error`인 항목은 `error_code`에 따라 요건 추출 전, 공고 확인 필요 또는 평가 오류로 표시한다. 상세 근거가 필요한 경우에만 단일 공고 평가 Capability를 호출한다.
 
 ## 공통 응답 형태
 

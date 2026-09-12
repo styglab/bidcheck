@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./app/App";
 import { CompanyProvider } from "./features/company-context/CompanyContext";
 import "./styles.css";
+import { ThemeProvider } from "./features/theme/ThemeProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -12,11 +13,11 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <ThemeProvider><BrowserRouter>
         <CompanyProvider>
           <App />
         </CompanyProvider>
-      </BrowserRouter>
+      </BrowserRouter></ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

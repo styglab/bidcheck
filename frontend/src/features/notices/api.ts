@@ -68,7 +68,7 @@ export function useNotices(filters: NoticeFilters = {}) {
   });
   return useQuery({
     queryKey: ["notices", filters],
-    queryFn: () => api<SearchResponse>(`/bids?${search}`),
+    queryFn: ({ signal }) => api<SearchResponse>(`/bids?${search}`, { signal }),
     placeholderData: (previous) => previous,
     staleTime: 60_000,
   });
@@ -76,7 +76,7 @@ export function useNotices(filters: NoticeFilters = {}) {
 export function useNotice(noticeId?: string) {
   return useQuery({
     queryKey: ["notice", noticeId],
-    queryFn: () => api<DetailResponse>(`/bids/${encodeURIComponent(noticeId!)}`),
+    queryFn: ({ signal }) => api<DetailResponse>(`/bids/${encodeURIComponent(noticeId!)}`, { signal }),
     enabled: Boolean(noticeId),
     staleTime: 60_000,
   });
@@ -97,5 +97,42 @@ export function useAssessment(noticeId?: string, businessNumber?: string) {
       }),
     enabled: Boolean(noticeId && /^[0-9]{10}$/.test(businessNumber ?? "")),
     staleTime: 60_000,
+  });
+}
+
+export type AssessmentPreviewIssue = {
+  requirement_id?: string;
+  outcome?: "satisfied" | "unsatisfied" | "needs_review";
+  summary?: string;
+};
+export type AssessmentPreview = {
+  bid_notice_id: string;
+  status: "completed" | "error";
+  error_code?: string;
+  outcome?: "satisfied" | "unsatisfied" | "needs_review";
+  satisfied_count?: number;
+  unsatisfied_count?: number;
+  needs_review_count?: number;
+  issues?: AssessmentPreviewIssue[];
+};
+type BatchAssessmentResponse = {
+  items: AssessmentPreview[];
+  registry_version?: string;
+};
+export function useAssessmentPreviews(noticeIds: string[], businessNumber?: string) {
+  return useQuery({
+    queryKey: ["assessment-previews", businessNumber, noticeIds],
+    queryFn: ({ signal }) =>
+      api<BatchAssessmentResponse>("/assessments/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          business_registration_number: businessNumber,
+          bid_notice_ids: noticeIds,
+          participation_mode: "single",
+        }),
+        signal,
+      }),
+    enabled: Boolean(noticeIds.length && /^[0-9]{10}$/.test(businessNumber ?? "")),
+    staleTime: 5 * 60_000,
   });
 }

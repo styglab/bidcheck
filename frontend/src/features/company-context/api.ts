@@ -9,9 +9,10 @@ export type CompanySearchItem = {
 export function useCompanySearch(query: string) {
   return useQuery({
     queryKey: ["companies", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<{ items: CompanySearchItem[]; count: number; truncated: boolean }>(
         `/companies/search?q=${encodeURIComponent(query)}`,
+        { signal },
       ),
     enabled: query.trim().length >= 2,
     staleTime: 30 * 60_000,

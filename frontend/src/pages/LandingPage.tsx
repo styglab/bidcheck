@@ -50,7 +50,7 @@ export function LandingPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               aria-label="공고 검색"
-              placeholder="공고명 · 공고번호 · 발주기관 검색"
+              placeholder="공고명 또는 발주기관 검색"
             />
             <button>검색</button>
           </form>
@@ -104,7 +104,7 @@ export function LandingPage() {
               </button>
             )}
           </div>
-          <NoticeTable filters={{ page_size: 5, work_type: "service" }} />
+          <NoticeTable filters={{ page_size: 5 }} />
           <p className="table-note">
             목록에서는 구조화된 주요 요건만 빠르게 비교합니다. 전체 조건은 공고 상세에서 확인하세요.
           </p>
@@ -143,7 +143,7 @@ export function LandingPage() {
           <p>공공입찰 참가요건을 더 분명하게.</p>
         </div>
         <nav>
-          <Link to="/notices">공고 찾기</Link>
+          <Link to="/notices">입찰공고</Link>
           <Link to="/companies">업체 조회</Link>
           <a href="mailto:feedback@bidcheck.kr">의견 보내기</a>
         </nav>

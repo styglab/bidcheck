@@ -8,7 +8,7 @@
 :root {
   font-family: "Geist Variable", "Noto Sans KR", system-ui, sans-serif;
   color: #18231f;
-  --green: #105d47;
+  --brand: #1e40af;
   --soft: #f4f7f5;
   --line: #dfe6e2;
   --muted: oklch(0.97 0 0);
@@ -18,7 +18,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.45 0.18 260);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -28,7 +28,10 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.55 0.18 260);
+  --control-sm: 2rem;
+  --control-md: 2.25rem;
+  --control-lg: 2.75rem;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -73,6 +76,13 @@ button {
   cursor: pointer;
   letter-spacing: -0.01em;
 }
+[data-slot="input"],
+[data-slot="select-trigger"] {
+  min-height: var(--control-md);
+}
+[data-slot="button"][data-size="default"] {
+  min-height: var(--control-md);
+}
 h1,
 h2,
 h3,
@@ -97,7 +107,7 @@ h3 {
 .ui-button-md { height: 40px; padding: 0 16px; font-size: 12px; }
 .ui-button-sm { height: 34px; padding: 0 12px; font-size: 12px; }
 .ui-button-lg { height: 46px; padding: 0 20px; font-size: 14px; }
-.ui-button-default { color: #fff; background: var(--green); border: 1px solid var(--green); }
+.ui-button-default { color: #fff; background: var(--brand); border: 1px solid var(--brand); }
 .ui-button-outline { color: #30483e; background: #fff; border: 1px solid #c8d5cf; }
 .ui-button-ghost { color: #526159; background: transparent; border: 1px solid transparent; }
 .ui-badge {
@@ -111,7 +121,7 @@ h3 {
   font-weight: 700;
   white-space: nowrap;
 }
-.ui-badge-default { color: #fff; background: var(--green); }
+.ui-badge-default { color: #fff; background: var(--brand); }
 .ui-badge-success { color: #176d50; background: #e4f3eb; }
 .ui-badge-warning { color: #8a621b; background: #fff3d5; }
 .ui-badge-muted { color: #66736d; background: #edf1ef; }
@@ -131,7 +141,7 @@ svg {
   width: min(1050px, calc(100% - 48px));
 }
 .eyebrow {
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -155,12 +165,12 @@ svg {
   letter-spacing: -0.05em;
 }
 .logo span {
-  color: var(--green);
+  color: var(--brand);
 }
 .logo i {
   margin-left: 5px;
   padding: 2px 4px;
-  color: var(--green);
+  color: var(--brand);
   background: #eaf4ef;
   border-radius: 3px;
   font-size: 9px;
@@ -175,7 +185,7 @@ svg {
   font-weight: 600;
 }
 .site-header a:hover {
-  color: var(--green);
+  color: var(--brand);
 }
 .header-actions {
   margin-left: auto;
@@ -189,13 +199,6 @@ svg {
 }
 .header-actions > a {
   margin-left: 8px;
-}
-.header-actions > button {
-  padding: 8px 14px;
-  border: 1px solid #ccd7d1;
-  border-radius: 7px;
-  background: #fff;
-  font-weight: 600;
 }
 .mobile-menu {
   display: none;
@@ -214,7 +217,7 @@ svg {
   letter-spacing: -0.055em;
 }
 .hero h1 em {
-  color: var(--green);
+  color: var(--brand);
   font-style: normal;
 }
 .hero p {
@@ -231,7 +234,7 @@ svg {
   align-items: center;
   gap: 11px;
   color: white;
-  background: var(--green);
+  background: var(--brand);
   border-radius: 7px;
   font-size: 14px;
   font-weight: 700;
@@ -270,7 +273,7 @@ svg {
   border-radius: 8px;
 }
 .search-form svg {
-  color: var(--green);
+  color: var(--brand);
 }
 .search-form input {
   min-width: 0;
@@ -288,7 +291,7 @@ svg {
   margin-right: 7px;
   padding: 0 22px;
   color: white;
-  background: var(--green);
+  background: var(--brand);
   border: 0;
   border-radius: 6px;
   font-size: 12px;
@@ -309,8 +312,8 @@ svg {
 }
 .categories button.active {
   color: white;
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--brand);
+  border-color: var(--brand);
 }
 .categories button:disabled {
   cursor: not-allowed;
@@ -325,7 +328,7 @@ svg {
 }
 .notice-filters select:disabled {
   cursor: not-allowed;
-  color: var(--green);
+  color: var(--brand);
   background: #eaf3ee;
   border-color: #bfd2c8;
   opacity: 1;
@@ -349,7 +352,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   font-weight: 700;
 }
@@ -375,7 +378,7 @@ svg {
   height: 36px;
   display: grid;
   place-items: center;
-  color: var(--green);
+  color: var(--brand);
   background: #e4f1ea;
   border-radius: 8px;
 }
@@ -418,7 +421,7 @@ svg {
   font-weight: 600;
 }
 .company-trigger.is-selected {
-  color: var(--green);
+  color: var(--brand);
   border-color: #91b2a3;
 }
 .company-selector.compact .company-trigger {
@@ -498,12 +501,12 @@ svg {
 }
 .company-result span em {
   margin-top: 4px;
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   font-style: normal;
 }
 .company-result > b {
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
 }
 .clear-company {
@@ -615,7 +618,7 @@ svg {
   justify-content: end;
   align-items: center;
   gap: 5px;
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   font-weight: 700;
 }
@@ -738,7 +741,7 @@ footer small {
   .header-actions .company-trigger {
     width: 100%;
   }
-  .header-actions > button {
+  .header-login {
     position: absolute;
     right: 50px;
     top: 14px;
@@ -882,7 +885,7 @@ footer small {
   height: 42px;
   display: grid;
   place-items: center;
-  color: var(--green);
+  color: var(--brand);
   background: #dfeee7;
   border-radius: 10px;
 }
@@ -906,8 +909,8 @@ footer small {
   height: 42px;
   justify-content: center;
   color: #fff;
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--brand);
+  border-color: var(--brand);
   font-size: 12px;
 }
 .company-trigger.mode-change { min-width: 100px; }
@@ -937,8 +940,8 @@ footer small {
 }
 .notice-type-tabs button.active {
   color: #fff;
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--brand);
+  border-color: var(--brand);
   box-shadow: 0 6px 16px rgba(16, 93, 71, 0.16);
 }
 .notice-type-tabs button.active small {
@@ -983,7 +986,7 @@ footer small {
   align-items: center;
   gap: 7px;
   color: #fff;
-  background: var(--green);
+  background: var(--brand);
   border: 0;
   border-radius: 8px;
   font-size: 12px;
@@ -1080,7 +1083,7 @@ footer small {
   margin-bottom: 10px;
 }
 .notice-result-meta span {
-  color: var(--green);
+  color: var(--brand);
 }
 .page-table .table-head,
 .page-table .notice-row {
@@ -1232,7 +1235,7 @@ footer small {
 .table-state button {
   margin-top: 8px;
   padding: 7px 12px;
-  color: var(--green);
+  color: var(--brand);
   background: white;
   border: 1px solid #b8c9c0;
   border-radius: 6px;
@@ -1324,7 +1327,7 @@ footer small {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--green);
+  color: var(--brand);
   border: 1px solid #bdd0c7;
   border-radius: 7px;
   font-size: 12px;
@@ -1388,7 +1391,7 @@ footer small {
 .requirement-card-head {
   display: flex;
   justify-content: space-between;
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   text-transform: uppercase;
 }
@@ -1430,7 +1433,7 @@ footer small {
   font-size: 12px;
 }
 .requirement-card summary {
-  color: var(--green);
+  color: var(--brand);
   cursor: pointer;
   font-weight: 600;
 }
@@ -1481,7 +1484,7 @@ footer small {
 
 /* Routed pages and accessible portalled overlays */
 .site-header a.active {
-  color: var(--green);
+  color: var(--brand);
 }
 .company-popover {
   position: relative;
@@ -1539,14 +1542,14 @@ footer small {
 .popover-search button {
   padding: 5px 8px;
   color: white;
-  background: var(--green);
+  background: var(--brand);
   border: 0;
   border-radius: 5px;
   font-size: 12px;
 }
 .service-only-label {
   margin-top: 13px;
-  color: var(--green);
+  color: var(--brand);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1605,8 +1608,8 @@ footer small {
 }
 .pagination button.active {
   color: white;
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--brand);
+  border-color: var(--brand);
 }
 .pagination button:disabled {
   cursor: default;
@@ -1695,8 +1698,8 @@ footer small {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.7 0.15 255);
+  --primary-foreground: oklch(0.14 0.02 255);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -1706,7 +1709,7 @@ footer small {
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.65 0.15 255);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -1720,6 +1723,40 @@ footer small {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* Legacy surfaces still used by the landing page. Keep them theme-aware until migrated. */
+.dark .site-header {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--background) 94%, transparent);
+  border-color: var(--border);
+}
+.dark .company-trigger,
+.dark .company-popover,
+.dark .search-form,
+.dark .notice-table,
+.dark .notice-row,
+.dark .notice-search-panel {
+  color: var(--foreground);
+  background: var(--background);
+  border-color: var(--border);
+}
+.dark .company-result,
+.dark .table-head,
+.dark .search-area,
+.dark .features,
+.dark .filter-footer,
+.dark .table-state {
+  color: var(--foreground);
+  background: var(--muted);
+  border-color: var(--border);
+}
+.dark .hero {
+  background: linear-gradient(180deg, var(--background), var(--card));
+}
+.dark .notice-row:hover,
+.dark .company-result:hover {
+  background: var(--accent);
 }
 
 @layer base {

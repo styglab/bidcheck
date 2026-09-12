@@ -1,6 +1,8 @@
 import { Menu } from "lucide-react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { CompanySelector } from "../features/company-context/CompanySelector";
+import { ThemeToggle } from "../features/theme/ThemeToggle";
+import { Button } from "@/components/ui/button";
 
 export function PublicLayout() {
   return (
@@ -10,15 +12,12 @@ export function PublicLayout() {
           <span>Bid</span>Check<i>beta</i>
         </Link>
         <nav>
-          <NavLink to="/notices">공고 찾기</NavLink>
-          <NavLink to="/companies">업체 조회</NavLink>
-          <Link to="/#features">서비스 소개</Link>
+          <NavLink to="/notices">입찰공고</NavLink>
         </nav>
         <div className="header-actions">
-          <span className="header-context">검토 업체</span>
           <CompanySelector compact />
-          <a href="mailto:feedback@bidcheck.kr">의견 보내기</a>
-          <button type="button">로그인</button>
+          <ThemeToggle />
+          <Button className="header-login" variant="outline" type="button">로그인</Button>
         </div>
         <button className="mobile-menu" type="button" aria-label="메뉴 열기">
           <Menu size={19} />
