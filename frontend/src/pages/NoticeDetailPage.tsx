@@ -30,6 +30,15 @@ function formatKoreanDateTime(value?: string) {
   }).format(date);
 }
 
+const requirementTypeLabels: Record<string, string> = {
+  participation_region: "지역",
+  industry_license: "면허·업종",
+};
+
+function isKeyRequirement(type: string) {
+  return type === "participation_region" || type === "industry_license";
+}
+
 export function NoticeDetailPage() {
   const { noticeId } = useParams();
   const query = useNotice(noticeId);
@@ -54,6 +63,7 @@ export function NoticeDetailPage() {
       </main>
     );
   const { notice, requirements, requirement_state, participation_findings } = query.data!;
+  const orderedRequirements = [...requirements].sort((left, right) => Number(isKeyRequirement(right.type)) - Number(isKeyRequirement(left.type)));
   const requirementAssessment = (requirementId: string, localId?: string) =>
     assessment.data?.requirement_assessments.find((item) => {
       const candidate = String(item.requirement_id ?? item.bid_requirement_id ?? item.local_id ?? "");
@@ -143,7 +153,7 @@ export function NoticeDetailPage() {
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-background">
             <div className="hidden grid-cols-[140px_minmax(0,1fr)_minmax(180px,.7fr)_120px] gap-5 border-b bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid"><span>조건</span><span>공고 요구사항</span><span>회사 정보</span><span className="text-right">판정</span></div>
-            {requirements.map((requirement) => {
+            {orderedRequirements.map((requirement) => {
               const result = currentCompany
                 ? requirementAssessment(requirement.id, requirement.local_id)
                 : undefined;
@@ -151,8 +161,8 @@ export function NoticeDetailPage() {
               const companyEvidence = result
                 ? String(result.evaluated_value ?? result.company_value ?? result.evidence_summary ?? "회사 증빙을 상세 확인하세요.")
                 : currentCompany ? "분석 결과 없음" : "회사 프로필 미적용";
-              return <article className="grid gap-3 border-b border-border px-5 py-4 last:border-0 md:grid-cols-[140px_minmax(0,1fr)_minmax(180px,.7fr)_120px] md:gap-5" key={requirement.id}>
-                <div><span className="text-sm font-semibold text-foreground">{requirement.title}</span><div className="mt-1 flex gap-1">{requirement.mandatory && <Badge variant="outline" className="h-5 text-[10px]">필수</Badge>}<Badge variant="secondary" className="h-5 text-[10px]">{requirement.type}</Badge></div></div>
+              return <article className={`grid gap-3 border-b border-border px-5 py-4 last:border-0 md:grid-cols-[140px_minmax(0,1fr)_minmax(180px,.7fr)_120px] md:gap-5 ${isKeyRequirement(requirement.type) ? "bg-blue-50/30 dark:bg-blue-950/10" : ""}`} key={requirement.id}>
+                <div><span className="text-sm font-semibold text-foreground">{requirement.title}</span><div className="mt-1 flex flex-wrap gap-1">{isKeyRequirement(requirement.type) && <Badge className="h-5 bg-blue-100 text-[10px] text-blue-800 dark:bg-blue-950 dark:text-blue-300">대표요건</Badge>}{requirement.mandatory && <Badge variant="outline" className="h-5 text-[10px]">필수</Badge>}<Badge variant="secondary" className="h-5 text-[10px]">{requirementTypeLabels[requirement.type] ?? requirement.type}</Badge></div></div>
                 <div><span className="mb-1 block text-xs text-muted-foreground md:hidden">공고 요구사항</span><p className="text-sm leading-6 text-muted-foreground">{requirement.proposition_text ?? requirement.original_text ?? "요구사항 원문을 확인하세요."}</p>{requirement.proof_summary && <small className="mt-1 block text-xs text-muted-foreground">확인자료 · {requirement.proof_summary}</small>}</div>
                 <div><span className="mb-1 block text-xs text-muted-foreground md:hidden">회사 정보</span><p className="text-sm leading-6 text-muted-foreground">{companyEvidence}</p></div>
                 <div className="md:text-right">{status ? <Badge className={status.className === "satisfied" ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300" : status.className === "unsatisfied" ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300" : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300"}>{status.icon}{status.label}</Badge> : <Badge variant="secondary">분석 전</Badge>}</div>

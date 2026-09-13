@@ -164,6 +164,16 @@ def test_batch_assessment_returns_outcome_items(monkeypatch):
                         "satisfied_count": 2,
                         "unsatisfied_count": 0,
                         "needs_review_count": 1,
+                        "key_outcomes": {
+                            "industry_license": {
+                                "applicability": "applicable",
+                                "outcome": "satisfied",
+                                "satisfied_count": 1,
+                                "unsatisfied_count": 0,
+                                "needs_review_count": 0,
+                                "requirement_ids": ["requirement-1"],
+                            }
+                        },
                         "issues": [],
                     }
                 ]
@@ -184,6 +194,7 @@ def test_batch_assessment_returns_outcome_items(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["items"][0]["bid_notice_id"] == "NOTICE:000"
+    assert response.json()["items"][0]["key_outcomes"]["industry_license"]["outcome"] == "satisfied"
     assert calls[0][0] == "assess_company_bid_eligibilities"
     assert calls[0][1]["bid_notice_ids"] == ["NOTICE:000"]
     assert calls[0][2]["max_objects"] == 100

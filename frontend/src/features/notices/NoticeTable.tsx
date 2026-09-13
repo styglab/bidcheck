@@ -1,11 +1,11 @@
-import { ArrowRight, Building2, CircleAlert, FileCheck2, LoaderCircle, SearchX } from "lucide-react";
+import { Building2, Check, CircleAlert, FileCheck2, LoaderCircle, SearchX, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StatusState } from "@/components/common/status-state";
 import { useCompany } from "../company-context/useCompany";
-import { useAssessmentPreviews, useNotices, type AssessmentPreview, type NoticeFilters } from "./api";
+import { useAssessmentPreviews, useNotices, type AssessmentPreview, type KeyOutcome, type NoticeFilters } from "./api";
 function dday(deadline?: string) {
   if (!deadline) return "-";
   const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000);
@@ -45,10 +45,27 @@ function assessmentErrorLabel(code?: string) {
   if (code?.includes("company")) return "회사정보 확인 필요";
   return "평가 확인 필요";
 }
-function assessmentOutcomeLabel(preview: AssessmentPreview) {
-  if ((preview.unsatisfied_count ?? 0) > 0) return `미충족 ${preview.unsatisfied_count}`;
-  if ((preview.needs_review_count ?? 0) > 0) return `확인 필요 ${preview.needs_review_count}`;
-  return "주요요건 충족";
+function keyRequirementOutcome(preview: AssessmentPreview, type: "participation_region" | "industry_license") {
+  return preview.key_outcomes?.[type];
+}
+function keyRequirementStatus(label: string, result?: KeyOutcome) {
+  const status = result?.applicability === "not_applicable"
+    ? { text: "해당 없음", className: "bg-muted text-muted-foreground", icon: null }
+    : result?.applicability === "unknown"
+      ? { text: "확인 필요", className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300", icon: <CircleAlert size={12} /> }
+      : result?.outcome === "unsatisfied"
+    ? { text: "미충족", className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300", icon: <X size={12} /> }
+    : result?.outcome === "needs_review"
+      ? { text: "확인 필요", className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300", icon: <CircleAlert size={12} /> }
+      : result?.outcome === "satisfied"
+        ? { text: "충족", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300", icon: <Check size={12} /> }
+        : { text: "정보 없음", className: "bg-muted text-muted-foreground", icon: null };
+  return <span className="flex items-center gap-2"><span className="w-7 shrink-0 text-muted-foreground">{label}</span><strong className={`inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 font-semibold ${status.className}`}>{status.icon}{status.text}</strong></span>;
+}
+function overallStatus(preview: AssessmentPreview) {
+  if ((preview.unsatisfied_count ?? 0) > 0) return { text: "미충족", className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300", icon: <X size={12} /> };
+  if ((preview.needs_review_count ?? 0) > 0) return { text: "확인 필요", className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300", icon: <CircleAlert size={12} /> };
+  return { text: "충족", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300", icon: <Check size={12} /> };
 }
 export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
   const { currentCompany } = useCompany();
@@ -69,19 +86,20 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
     return <StatusState icon={<SearchX size={30} />} title="조건에 맞는 공고가 없습니다" description="검색어를 줄이거나 금액·마감 조건을 해제해 보세요." action={<Button variant="outline" asChild><Link to="/notices">검색 조건 전체 초기화</Link></Button>} />;
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-border bg-background">
-        <div className="hidden grid-cols-[minmax(0,1fr)_230px_120px_140px_220px] gap-5 border-b border-border bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
+      <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+        <div className="hidden grid-cols-[minmax(260px,1fr)_205px_105px_165px_165px_170px] gap-5 border-b border-border bg-muted/40 px-5 py-3 text-xs font-medium text-muted-foreground xl:grid">
           <span>공고명</span>
           <span>발주기관</span>
-          <span>금액</span>
+          <span className="text-right">금액</span>
           <span>마감</span>
-          <span className="text-right">검토 상태</span>
+          <span className="border-l border-border/70 pl-3">지역·업종</span>
+          <span className="border-l border-border/70 pl-3">전체 요건</span>
         </div>
         {query.data.items.map((notice) => {
           const preview = previewsByNotice.get(notice.id);
           return (
           <article
-            className="group relative grid gap-4 border-b border-border px-5 py-4 transition last:border-0 hover:bg-blue-50/30 lg:grid-cols-[minmax(0,1fr)_230px_120px_140px_220px] lg:items-center lg:gap-5"
+            className="group relative grid gap-4 border-b border-border/80 px-5 py-4 transition-colors last:border-0 hover:bg-blue-50/40 dark:hover:bg-blue-950/10 xl:grid-cols-[minmax(260px,1fr)_205px_105px_165px_165px_170px] xl:items-center xl:gap-5"
             key={notice.id}
           >
             <Link className="absolute inset-0" to={`/notices/${encodeURIComponent(notice.id)}`} aria-label={`${notice.name} 상세 보기`} />
@@ -96,41 +114,35 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
               <span className="flex items-center gap-1.5 text-foreground"><Building2 className="shrink-0 text-muted-foreground" size={14} /><b className="truncate font-medium" title={notice.organization}>{notice.organization}</b></span>
               <small className="mt-1 block truncate text-xs text-muted-foreground" title={notice.contract_method ?? "계약방법 미상"}>{notice.contract_method ?? "계약방법 미상"}</small>
             </div>
-            <div className="pointer-events-none text-sm">
-              <span className="font-semibold text-foreground">{price(notice.allocated_budget)}</span>
+            <div className="pointer-events-none text-sm xl:text-right">
+              <span className="font-semibold tabular-nums text-foreground">{price(notice.allocated_budget)}</span>
             </div>
             <div className="pointer-events-none text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">{notice.deadline_at && <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40">{dday(notice.deadline_at)}</Badge>}<b className="font-medium">마감 {shortDateTime(notice.deadline_at)}</b></div>
+              <div className="flex items-center gap-2">{notice.deadline_at && <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40">{dday(notice.deadline_at)}</Badge>}<b className="font-medium tabular-nums">{shortDateTime(notice.deadline_at)}</b></div>
               {notice.status === "unknown" && <small className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={13} />일정 원문 확인 필요</small>}
             </div>
-            <div className="relative z-10 flex items-center justify-between gap-3 lg:block lg:text-right">
+            <div className="pointer-events-none min-w-0 text-xs xl:border-l xl:border-border/70 xl:pl-3">
+              <span className="mb-1.5 block text-[11px] font-medium text-muted-foreground xl:hidden">지역·업종</span>
               {currentCompany ? (
-                <>
-                  {preview?.status === "error" ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />{assessmentErrorLabel(preview.error_code)}</span>
-                  ) : preview ? (
-                    <div>
-                      <strong className={`text-xs ${preview.outcome === "unsatisfied" ? "text-red-700 dark:text-red-300" : preview.outcome === "needs_review" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>{assessmentOutcomeLabel(preview)}</strong>
-                      {previews.isFetching && <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground"><LoaderCircle className="animate-spin" size={11} />갱신 중</span>}
-                      <p className="mt-1 text-[11px] text-muted-foreground">충족 {preview.satisfied_count ?? 0} · 미충족 {preview.unsatisfied_count ?? 0} · 확인 {preview.needs_review_count ?? 0}</p>
-                      {preview.issues?.map((issue, index) => <p className="mt-1 truncate text-[11px] text-muted-foreground" title={issue.summary} key={`${issue.requirement_id ?? index}-${index}`}>· {issue.summary ?? "상세 확인이 필요한 요건"}</p>)}
-                    </div>
-                  ) : previews.isFetching ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><LoaderCircle className="animate-spin" size={14} />요건 검토 중</span>
-                  ) : previews.isError ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />검토 불러오기 실패</span>
-                  ) : notice.requires_review ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />원문 확인 필요</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><FileCheck2 size={14} />요건 확인</span>
-                  )}
-                  <Link className="mt-2 flex items-center justify-end gap-1 text-xs font-semibold text-blue-800 dark:text-blue-300" to={`/notices/${encodeURIComponent(notice.id)}`}>상세 검토 <ArrowRight size={14} /></Link>
-                </>
+                preview?.status === "completed" ? <div className="space-y-1">{keyRequirementStatus("지역", keyRequirementOutcome(preview, "participation_region"))}{keyRequirementStatus("업종", keyRequirementOutcome(preview, "industry_license"))}</div>
+                  : previews.isFetching ? <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground"><LoaderCircle className="animate-spin" size={14} />요건 검토 중</span>
+                    : <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground"><FileCheck2 size={14} />판정 전</span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <FileCheck2 size={14} />회사 선택 후 확인
                 </span>
               )}
+            </div>
+            <div className="pointer-events-none min-w-0 text-xs xl:border-l xl:border-border/70 xl:pl-3">
+              <span className="mb-1.5 block text-[11px] font-medium text-muted-foreground xl:hidden">전체 요건</span>
+              {currentCompany ? (
+                preview?.status === "error" ? <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />{assessmentErrorLabel(preview.error_code)}</span>
+                  : preview ? (() => { const status = overallStatus(preview); return <div><strong className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold ${status.className}`}>{status.icon}{status.text}</strong><p className="mt-1.5 whitespace-nowrap text-[11px] tabular-nums"><span className="text-emerald-700 dark:text-emerald-300">충족 {preview.satisfied_count ?? 0}</span><span className="px-1 text-border">·</span><span className="text-red-700 dark:text-red-300">미충족 {preview.unsatisfied_count ?? 0}</span><span className="px-1 text-border">·</span><span className="text-amber-700 dark:text-amber-300">확인 {preview.needs_review_count ?? 0}</span></p>{previews.isFetching && <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground"><LoaderCircle className="animate-spin" size={11} />갱신 중</span>}</div>; })()
+                    : previews.isFetching ? <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground"><LoaderCircle className="animate-spin" size={14} />검토 중</span>
+                      : previews.isError ? <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400"><CircleAlert size={14} />불러오기 실패</span>
+                        : notice.requires_review ? <span className="font-medium text-amber-700 dark:text-amber-400">원문 확인 필요</span>
+                          : <span className="text-muted-foreground">검토 전</span>
+              ) : <span className="text-muted-foreground">-</span>}
             </div>
           </article>
           );

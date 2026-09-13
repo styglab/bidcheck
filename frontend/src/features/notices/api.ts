@@ -138,6 +138,14 @@ export type AssessmentPreviewIssue = {
   outcome?: "satisfied" | "unsatisfied" | "needs_review";
   summary?: string;
 };
+export type KeyOutcome = {
+  applicability: "applicable" | "not_applicable" | "unknown";
+  outcome: "satisfied" | "unsatisfied" | "needs_review" | null;
+  satisfied_count: number;
+  unsatisfied_count: number;
+  needs_review_count: number;
+  requirement_ids: string[];
+};
 export type AssessmentPreview = {
   bid_notice_id: string;
   status: "completed" | "error";
@@ -146,6 +154,7 @@ export type AssessmentPreview = {
   satisfied_count?: number;
   unsatisfied_count?: number;
   needs_review_count?: number;
+  key_outcomes?: Record<string, KeyOutcome>;
   issues?: AssessmentPreviewIssue[];
 };
 type BatchAssessmentResponse = {
