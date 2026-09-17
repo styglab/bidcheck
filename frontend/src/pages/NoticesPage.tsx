@@ -1,4 +1,4 @@
-import { LoaderCircle, Search, X } from "lucide-react";
+import { LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -70,15 +70,13 @@ export function NoticesPage() {
     ["other", "기타"],
   ] as const;
   const validWorkTypes = workTypes.map(([value]) => value);
-  const selectedWorkTypes = params.has("work_type")
-    ? (params.get("work_type") ?? "")
-        .split(",")
-        .filter((value) => validWorkTypes.includes(value as (typeof validWorkTypes)[number]))
-    : validWorkTypes;
+  const workTypeParam = params.get("work_type") ?? "";
+  const selectedWorkType = validWorkTypes.includes(workTypeParam as (typeof validWorkTypes)[number])
+    ? workTypeParam
+    : undefined;
   const filters: NoticeFilters = {
     q: params.get("q") || undefined,
-    work_type:
-      selectedWorkTypes.length === workTypes.length ? undefined : selectedWorkTypes.join(",") || "none",
+    work_type: selectedWorkType,
     sort: "published_desc",
     page: Number(params.get("page") || 1),
     page_size: Number(params.get("page_size") || 20),
@@ -93,6 +91,7 @@ export function NoticesPage() {
     [params, setParams],
   );
   const [keyword, setKeyword] = useState(filters.q ?? "");
+  const [draftWorkType, setDraftWorkType] = useState<string | undefined>(selectedWorkType);
   const noticeQuery = useNotices(filters);
   useEffect(() => {
     const totalPages = noticeQuery.data?.pagination.total_pages ?? 0;
@@ -108,14 +107,12 @@ export function NoticesPage() {
     queryClient,
   ]);
   useEffect(() => {
-    if (keyword === (filters.q ?? "")) return;
-    const timer = window.setTimeout(() => update({ q: keyword.trim() }), 450);
+    const timer = window.setTimeout(() => {
+      setKeyword(filters.q ?? "");
+      setDraftWorkType(selectedWorkType);
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [keyword, filters.q, update]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setKeyword(filters.q ?? ""), 0);
-    return () => window.clearTimeout(timer);
-  }, [filters.q]);
+  }, [filters.q, selectedWorkType]);
   return (
     <PageContainer className="max-w-7xl">
       <header className="mb-8">
@@ -135,15 +132,15 @@ export function NoticesPage() {
           <Button
             type="button"
             size="sm"
-            variant={selectedWorkTypes.length === workTypes.length ? "default" : "outline"}
+            variant={!draftWorkType ? "default" : "outline"}
             className="rounded-full px-4"
-            aria-pressed={selectedWorkTypes.length === workTypes.length}
-            onClick={() => update({ work_type: selectedWorkTypes.length === workTypes.length ? "none" : "" })}
+            aria-pressed={!draftWorkType}
+            onClick={() => setDraftWorkType(undefined)}
           >
             전체
           </Button>
           {workTypes.map(([value, label]) => {
-            const selected = selectedWorkTypes.includes(value);
+            const selected = draftWorkType === value;
             return (
               <Button
                 key={value}
@@ -152,12 +149,7 @@ export function NoticesPage() {
                 variant={selected ? "default" : "outline"}
                 className="rounded-full px-4"
                 aria-pressed={selected}
-                onClick={() => {
-                  const next = selected
-                    ? selectedWorkTypes.filter((item) => item !== value)
-                    : [...selectedWorkTypes, value];
-                  update({ work_type: next.length === workTypes.length ? "" : next.join(",") || "none" });
-                }}
+                onClick={() => setDraftWorkType(value)}
               >
                 {label}
               </Button>
@@ -165,43 +157,33 @@ export function NoticesPage() {
           })}
         </div>
         <form
-          className="flex"
+          className="flex gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            update({ q: keyword.trim() });
+            update({ q: keyword.trim(), work_type: draftWorkType ?? "" });
           }}
         >
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
             <Input
-              className="h-12 bg-muted/35 pl-11 pr-16 text-sm"
+              className="h-12 bg-muted/35 pl-11 text-sm"
               name="q"
               aria-label="공고 검색"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               placeholder="공고명, 공고번호 또는 발주기관 검색"
             />
-            {noticeQuery.isFetching && (
-              <LoaderCircle
-                className={`absolute top-1/2 -translate-y-1/2 animate-spin text-blue-700 dark:text-blue-400 ${keyword ? "right-10" : "right-3"}`}
-                size={17}
-                aria-label="공고 검색 중"
-              />
-            )}
-            {keyword && (
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="검색어 지우기"
-                onClick={() => {
-                  setKeyword("");
-                  update({ q: "" });
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
           </div>
+          <Button
+            className="h-12 bg-blue-800 px-6 hover:bg-blue-700"
+            disabled={
+              noticeQuery.isFetching ||
+              (keyword.trim() === (filters.q ?? "") && draftWorkType === selectedWorkType)
+            }
+            type="submit"
+          >
+            {noticeQuery.isFetching ? <LoaderCircle className="animate-spin" aria-label="공고 검색 중" /> : "검색"}
+          </Button>
         </form>
       </div>
       <div className="mt-8 flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
