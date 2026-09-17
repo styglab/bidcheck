@@ -5,6 +5,9 @@ import { LandingPage } from "../pages/LandingPage";
 import { NoticeDetailPage } from "../pages/NoticeDetailPage";
 import { NoticesPage } from "../pages/NoticesPage";
 import { CompanySetupPage } from "../pages/CompanySetupPage";
+import { CompanyDetailPage } from "../pages/CompanyDetailPage";
+import { OrganizationsPage } from "../pages/OrganizationsPage";
+import { OrganizationDetailPage } from "../pages/OrganizationDetailPage";
 
 export function App() {
   return (
@@ -14,6 +17,9 @@ export function App() {
         <Route path="notices" element={<NoticesPage />} />
         <Route path="notices/:noticeId" element={<NoticeDetailPage />} />
         <Route path="companies" element={<CompaniesPage />} />
+        <Route path="companies/:businessNumber" element={<CompanyDetailPage />} />
+        <Route path="organizations" element={<OrganizationsPage />} />
+        <Route path="organizations/:organizationId" element={<OrganizationDetailPage />} />
         <Route path="company/setup" element={<CompanySetupPage />} />
         <Route path="*" element={<Navigate replace to="/" />} />
       </Route>

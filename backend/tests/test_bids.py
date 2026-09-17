@@ -110,7 +110,7 @@ def test_notice_detail_attaches_document_evidence_to_requirement(monkeypatch):
         if capability == "get_bid_requirements":
             return {
             "objects": [
-                {"id": "req-1", "type": "bid_requirement", "properties": {"requirement_id": "req-1", "value_text": '{"text":"면허"}'}},
+                {"id": "req-1", "type": "bid_requirement", "properties": {"requirement_id": "req-1", "value_text": '{"text":"면허"}', "assessment_stage": "qualification_review"}},
                 {"id": "ev-1", "type": "bid_requirement_evidence", "properties": {"evidence_id": "ev-1", "requirement_id": "req-1", "source_type": "document", "source_document": "공고문.hwpx", "source_page": 3, "source_clause": "입찰참가자격", "source_excerpt": "입찰참가자는 ...", "source_url": "https://example.com/notice"}},
             ]
             }
@@ -123,6 +123,7 @@ def test_notice_detail_attaches_document_evidence_to_requirement(monkeypatch):
     evidence = response.json()["requirements"][0]["evidence"][0]
     assert evidence["source_document"] == "공고문.hwpx"
     assert evidence["source_page"] == 3
+    assert response.json()["requirements"][0]["assessment_stage"] == "qualification_review"
 
 
 def test_notice_detail_attaches_evidence_to_participation_finding(monkeypatch):

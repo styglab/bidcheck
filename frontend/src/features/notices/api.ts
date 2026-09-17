@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 export type Notice = {
   id: string;
@@ -8,7 +8,9 @@ export type Notice = {
   work_type: string;
   status: string;
   organization: string;
+  organization_code?: string;
   notice_organization: string;
+  notice_organization_code?: string;
   published_at?: string;
   deadline_at?: string;
   opening_at?: string;
@@ -19,6 +21,12 @@ export type Notice = {
   detail_url?: string;
   extraction_completeness?: string;
   requires_review: boolean;
+  requirement_expression?: RequirementExpression;
+};
+export type RequirementExpression = {
+  operator: "all" | "any" | "leaf";
+  conditions?: RequirementExpression[];
+  requirement_id?: string | null;
 };
 export type Requirement = {
   id: string;
@@ -34,6 +42,9 @@ export type Requirement = {
   proof_summary?: string;
   comparison_mode?: string;
   observed_at?: string;
+  assessment_stage?: "bid_entry" | "qualification_review" | "contracting";
+  failure_effect?: string;
+  review_status?: string;
   evidence: RequirementEvidence[];
 };
 export type RequirementEvidence = {
@@ -77,6 +88,8 @@ export type NoticeFilters = {
   contract_method?: string;
   price_min?: string;
   price_max?: string;
+  notice_organization_code?: string;
+  demand_organization_code?: string;
   sort?: string;
   page?: number;
   page_size?: number;
@@ -94,17 +107,20 @@ type DetailResponse = {
   participation_findings: ParticipationFinding[];
   registry_version?: string;
 };
-export function useNotices(filters: NoticeFilters = {}) {
+export function noticeQueryOptions(filters: NoticeFilters = {}) {
   const search = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== "") search.set(key, String(value));
   });
-  return useQuery({
+  return queryOptions({
     queryKey: ["notices", filters],
     queryFn: ({ signal }) => api<SearchResponse>(`/bids?${search}`, { signal }),
     placeholderData: (previous) => previous,
     staleTime: 60_000,
   });
+}
+export function useNotices(filters: NoticeFilters = {}) {
+  return useQuery(noticeQueryOptions(filters));
 }
 export function useNotice(noticeId?: string) {
   return useQuery({
@@ -112,6 +128,62 @@ export function useNotice(noticeId?: string) {
     queryFn: ({ signal }) => api<DetailResponse>(`/bids/${encodeURIComponent(noticeId!)}`, { signal }),
     enabled: Boolean(noticeId),
     staleTime: 60_000,
+  });
+}
+export type ProcurementParticipation = {
+  id: string;
+  bid_notice_id?: string;
+  notice_number?: string;
+  notice_order?: string;
+  company_number?: string;
+  company_name?: string;
+  rank?: number;
+  bid_amount?: number;
+  bid_at?: string;
+  result?: string;
+  remark?: string;
+};
+export type ProcurementAward = {
+  id: string;
+  bid_notice_id?: string;
+  notice_number?: string;
+  notice_order?: string;
+  notice_name?: string;
+  company_number?: string;
+  company_name?: string;
+  winning_amount?: number;
+  winning_rate?: string;
+  participant_count?: number;
+  opening_at?: string;
+  award_date?: string;
+  organization_code?: string;
+  organization_name?: string;
+};
+export type ProcurementContract = {
+  id: string;
+  name?: string;
+  type?: string;
+  notice_number?: string;
+  bid_notice_id?: string;
+  amount?: number;
+  concluded_date?: string;
+  contract_date?: string;
+  period?: string;
+  method?: string;
+  detail_url?: string;
+  organization_code?: string;
+};
+export function useNoticeActivity(noticeId?: string) {
+  return useQuery({
+    queryKey: ["notice-activity", noticeId],
+    queryFn: ({ signal }) =>
+      api<{
+        participations: ProcurementParticipation[];
+        awards: ProcurementAward[];
+        contracts: ProcurementContract[];
+      }>(`/bids/${encodeURIComponent(noticeId!)}/activity`, { signal }),
+    enabled: Boolean(noticeId),
+    staleTime: 5 * 60_000,
   });
 }
 type AssessmentResponse = {
