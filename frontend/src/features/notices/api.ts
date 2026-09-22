@@ -139,6 +139,7 @@ export type ProcurementParticipation = {
   company_name?: string;
   rank?: number;
   bid_amount?: number;
+  bid_rate?: number | string;
   bid_at?: string;
   result?: string;
   remark?: string;
@@ -184,6 +185,60 @@ export function useNoticeActivity(noticeId?: string) {
       }>(`/bids/${encodeURIComponent(noticeId!)}/activity`, { signal }),
     enabled: Boolean(noticeId),
     staleTime: 5 * 60_000,
+  });
+}
+export type NoticeMarketContext = {
+  query_basis: string;
+  signals: Array<{ type: string; label: string; tone: "info" | "relation" | "review" }>;
+  companies: Array<{
+    company_number: string;
+    company_name: string;
+    participation_count: number;
+    award_count: number;
+    contract_count: number;
+    organization_award_count: number;
+    organization_participation_count: number;
+    organization_contract_count: number;
+    organization_contract_amount?: number;
+    organization_latest_activity_date?: string;
+    organization_similar_participation_count: number;
+    organization_similar_award_count: number;
+    organization_similar_contract_count: number;
+    region_status?: "satisfied" | "unsatisfied" | "needs_review" | "unknown" | "not_applicable";
+    industry_license_status?: "satisfied" | "unsatisfied" | "needs_review" | "unknown" | "not_applicable";
+    required_industries?: unknown[];
+    required_licenses?: unknown[];
+    matched_industries?: unknown[];
+    matched_licenses?: unknown[];
+    industry_license_reference_date?: string;
+    signals?: string[];
+    total_amount: number;
+    latest_award_date?: string;
+    notice_ids: string[];
+    activities?: Array<{
+      bid_notice_id: string;
+      notice_name?: string;
+      organization_code?: string;
+      organization_name?: string;
+      participated: boolean;
+      awarded: boolean;
+      contracted: boolean;
+      award_date?: string;
+      winning_amount?: number;
+    }>;
+  }>;
+  similar_notices: Array<ProcurementAward & { similarity_reasons: string[]; similarity_score: number }>;
+  sample_size: number;
+  period_years: number;
+};
+export function useNoticeMarketContext(noticeId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["notice-market-context", noticeId],
+    queryFn: ({ signal }) =>
+      api<NoticeMarketContext>(`/bids/${encodeURIComponent(noticeId!)}/market-context`, { signal }),
+    enabled: Boolean(noticeId) && enabled,
+    staleTime: 10 * 60_000,
+    retry: false,
   });
 }
 type AssessmentResponse = {

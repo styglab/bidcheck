@@ -23,7 +23,7 @@ def notice(obj: dict[str, Any]) -> dict[str, Any]:
 
 def opening_participation(obj: dict[str, Any]) -> dict[str, Any]:
     p = obj.get("properties", {})
-    return {"id": p.get("participation_id") or obj.get("id"), "bid_notice_id": p.get("bid_notice_id"), "notice_number": p.get("notice_number"), "notice_order": p.get("notice_order"), "company_number": p.get("business_registration_number"), "company_name": p.get("participant_name"), "rank": p.get("opening_rank"), "bid_amount": money(p.get("bid_amount")), "bid_at": p.get("bid_at"), "result": p.get("opening_result_type_name"), "remark": p.get("remark")}
+    return {"id": p.get("participation_id") or obj.get("id"), "bid_notice_id": p.get("bid_notice_id"), "notice_number": p.get("notice_number"), "notice_order": p.get("notice_order"), "company_number": p.get("business_registration_number"), "company_name": p.get("participant_name"), "rank": p.get("opening_rank"), "bid_amount": money(p.get("bid_amount")), "bid_rate": p.get("bid_rate") or p.get("bid_rate_percent") or p.get("bid_price_rate"), "bid_at": p.get("bid_at"), "result": p.get("opening_result_type_name"), "remark": p.get("remark")}
 
 
 def award(obj: dict[str, Any]) -> dict[str, Any]:
