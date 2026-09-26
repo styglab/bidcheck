@@ -1,7 +1,8 @@
-import { ArrowLeft, ExternalLink, Landmark } from "lucide-react";
+import { ExternalLink, Landmark } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 import { EntityTabs } from "@/components/common/entity-tabs";
+import { HistoryBackLink } from "@/components/common/history-back-link";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +22,7 @@ export function OrganizationDetailPage() {
   if (organizationQuery.isLoading) return <PageContainer><Skeleton className="h-8 w-40" /><Skeleton className="mt-8 h-40 rounded-xl" /></PageContainer>;
   if (organizationQuery.isError) return <PageContainer><p className="rounded-xl bg-red-50 p-5 text-red-700">기관 정보를 불러오지 못했습니다. {organizationQuery.error.message}</p></PageContainer>;
   return <PageContainer>
-    <Link className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-blue-800" to="/organizations"><ArrowLeft size={15} />기관 찾기</Link>
+    <HistoryBackLink fallbackTo="/organizations" />
     <header className="mt-7 flex items-start gap-4"><span className="grid size-12 place-items-center rounded-xl bg-blue-50 text-blue-800"><Landmark /></span><div><h1 className="text-3xl font-bold tracking-tight">{organization?.name}</h1><p className="mt-2 text-sm text-muted-foreground">{organization?.jurisdiction_type ?? "기관 유형 미상"} · 기관코드 {organizationId}</p></div></header>
     <div className="mt-8 grid gap-4 md:grid-cols-3"><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">최근 90일 공고</small><strong className="mt-1 block text-2xl">{noticeQuery.data?.pagination.total_items ?? "-"}건</strong></CardContent></Card><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">최근 1년 낙찰</small><strong className="mt-1 block text-2xl">{activity.data?.award_pagination.total_items ?? "-"}건</strong></CardContent></Card><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">최근 1년 계약</small><strong className="mt-1 block text-2xl">{activity.data?.contract_pagination.total_items ?? "-"}건</strong></CardContent></Card></div>
     {activity.isLoading && <Skeleton className="mt-10 h-48 rounded-xl" />}{activity.isError && <p className="mt-10 rounded-xl border p-5 text-sm text-muted-foreground">낙찰·계약 정보를 불러오지 못했습니다.</p>}{activity.data && <>

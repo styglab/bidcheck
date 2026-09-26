@@ -34,6 +34,8 @@ export type Requirement = {
   type: string;
   operator?: string;
   title: string;
+  industry_code?: string;
+  applicability?: string;
   original_text?: string;
   proposition_text?: string;
   mandatory: boolean;
@@ -103,6 +105,15 @@ type SearchResponse = {
 type DetailResponse = {
   notice: Notice;
   requirements: Requirement[];
+  requirement_set?: {
+    id: string;
+    requirement_expression?: RequirementExpression;
+    requirement_categories: Record<string, { completeness?: string; applicability?: string }>;
+    region_requirement_status?: string;
+    industry_license_requirement_status?: string;
+    requirement_extraction_status?: string;
+    requires_review: boolean;
+  } | null;
   requirement_state: string;
   participation_findings: ParticipationFinding[];
   registry_version?: string;
@@ -153,10 +164,11 @@ export type ProcurementAward = {
   company_number?: string;
   company_name?: string;
   winning_amount?: number;
-  winning_rate?: string;
+  winning_rate?: number | string;
   participant_count?: number;
   opening_at?: string;
   award_date?: string;
+  notice_published_date?: string;
   organization_code?: string;
   organization_name?: string;
 };
@@ -224,10 +236,28 @@ export type NoticeMarketContext = {
       awarded: boolean;
       contracted: boolean;
       award_date?: string;
+      notice_published_date?: string;
+      activity_date?: string;
+      opening_rank?: number;
+      bid_amount?: number | string;
+      result?: "awarded" | "not_awarded" | "participation_only" | "contracted";
+      bid_classification_number?: string;
+      rebid_number?: string;
+      unified_contract_number?: string;
       winning_amount?: number;
+      is_similar_notice?: boolean;
+      is_same_organization?: boolean;
     }>;
   }>;
-  similar_notices: Array<ProcurementAward & { similarity_reasons: string[]; similarity_score: number }>;
+  similar_notices: Array<ProcurementAward & {
+    similarity_reasons: string[];
+    similarity_score: number;
+    similarity_level?: "high" | "medium" | "low";
+    matched_features?: Record<string, unknown>;
+    relationship_type?: "same_project" | "similar_notice" | "related_candidate";
+    comparison_eligible?: boolean;
+    comparison_exclusion_reasons?: string[];
+  }>;
   sample_size: number;
   period_years: number;
 };
@@ -236,6 +266,40 @@ export function useNoticeMarketContext(noticeId?: string, enabled = true) {
     queryKey: ["notice-market-context", noticeId],
     queryFn: ({ signal }) =>
       api<NoticeMarketContext>(`/bids/${encodeURIComponent(noticeId!)}/market-context`, { signal }),
+    enabled: Boolean(noticeId) && enabled,
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+}
+export type OrganizationFieldCompany = {
+  company_number: string;
+  company_name: string;
+  relationship_group: "organization_field" | "market_similar" | "organization_other";
+  same_organization_award_count: number;
+  same_organization_contract_count: number;
+  same_organization_contract_amount?: number;
+  same_organization_contract_amount_complete: boolean;
+  same_field_award_count: number;
+  same_field_contract_count: number;
+  same_project_type_count: number;
+  similar_amount_count: number;
+  latest_activity_date?: string;
+  matched_factors: string[];
+  sample_notice_ids: string[];
+};
+export type OrganizationFieldCompaniesResponse = {
+  bid_notice_id: string;
+  organization?: { code?: string; name?: string };
+  organization_field_companies: OrganizationFieldCompany[];
+  market_similar_companies: OrganizationFieldCompany[];
+  organization_other_companies: OrganizationFieldCompany[];
+  policy: Record<string, unknown>;
+  registry_version?: string;
+};
+export function useNoticeOrganizationFieldCompanies(noticeId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["notice-organization-field-companies", noticeId],
+    queryFn: ({ signal }) => api<OrganizationFieldCompaniesResponse>(`/bids/${encodeURIComponent(noticeId!)}/organization-field-companies`, { signal }),
     enabled: Boolean(noticeId) && enabled,
     staleTime: 10 * 60_000,
     retry: false,

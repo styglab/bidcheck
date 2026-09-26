@@ -1,7 +1,8 @@
-import { ArrowLeft, ArrowUpRight, Building2, ExternalLink } from "lucide-react";
+import { ArrowUpRight, Building2, ExternalLink } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { EntityTabs } from "@/components/common/entity-tabs";
+import { HistoryBackLink } from "@/components/common/history-back-link";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,7 +23,7 @@ export function CompanyDetailPage() {
   const data = query.data!; const registration = data.business_registration[0] ?? {};
   const name = params.get("name") ?? String(registration.business_name ?? registration.company_name ?? "업체 정보");
   return <PageContainer>
-    <Link className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-blue-800" to="/companies"><ArrowLeft size={15} />업체 찾기</Link>
+    <HistoryBackLink fallbackTo="/companies" />
     <header className="mt-7 flex items-start gap-4"><span className="grid size-12 place-items-center rounded-xl bg-blue-50 text-blue-800"><Building2 /></span><div><h1 className="text-3xl font-bold tracking-tight">{name}</h1><p className="mt-2 text-sm text-muted-foreground">사업자등록번호 {businessNumber}</p></div></header>
     <div className="mt-8 grid gap-4 md:grid-cols-3"><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">최근 1년 참여</small><strong className="mt-1 block text-2xl">{activity.data?.pagination.total_items ?? "-"}건</strong></CardContent></Card><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">최근 1년 낙찰</small><strong className="mt-1 block text-2xl">{activity.data?.award_pagination.total_items ?? "-"}건</strong></CardContent></Card><Card className="shadow-none"><CardContent className="p-5"><small className="text-muted-foreground">전체 계약</small><strong className="mt-1 block text-2xl">{activity.data?.contract_count ?? "-"}건</strong></CardContent></Card></div>
     {activity.isLoading && <Skeleton className="mt-10 h-48 rounded-xl" />}{activity.isError && <p className="mt-10 rounded-xl border p-5 text-sm text-muted-foreground">조달 활동을 불러오지 못했습니다.</p>}

@@ -1,6 +1,5 @@
 import asyncio
 import math
-import re
 from datetime import datetime, timedelta, timezone
 from time import monotonic
 
@@ -17,32 +16,128 @@ from app.services.teoria_adapter import (
     participation_finding_evidence,
     requirement,
     requirement_evidence,
+    requirement_set,
     split_notice_id,
 )
 
 router = APIRouter()
 _notice_search_cache: dict[tuple, tuple[float, dict]] = {}
 _NOTICE_SEARCH_CACHE_TTL_SECONDS = 60
+_market_context_cache: dict[str, tuple[float, dict]] = {}
+_MARKET_CONTEXT_CACHE_TTL_SECONDS = 600
+_organization_field_company_cache: dict[str, tuple[float, dict]] = {}
 
-_TITLE_STOP_WORDS = {
-    "사업", "용역", "구매", "공고", "입찰", "계약", "시스템", "구축", "운영", "유지", "관리",
-    "제작", "설치", "개발", "년도", "년", "재공고", "긴급", "견적", "제출", "안내",
+_SIMILARITY_REASON_LABELS = {
+    "notice_title_similar": "공고명 유사",
+    "industry_requirements_matched": "요구 업종 일치",
+    "product_requirements_matched": "요구 품목 일치",
+    "similar_amount_range": "금액대 유사",
+    "contract_method_matched": "계약방법 일치",
 }
 
 
-def _title_tokens(value: str | None) -> set[str]:
-    return {
-        token.lower()
-        for token in re.findall(r"[가-힣A-Za-z0-9]+", value or "")
-        if len(token) >= 2 and token.lower() not in _TITLE_STOP_WORDS and not token.isdigit()
+def _company_activity_items(similar_history: dict, relationship: dict, similar_by_id: dict[str, dict]) -> list[dict]:
+    raw_items = similar_history.get("activities") or []
+    if not raw_items:
+        participation_ids = similar_history.get("matched_participation_bid_notice_ids", [])
+        award_ids = similar_history.get("matched_award_bid_notice_ids", [])
+        contract_ids = similar_history.get("matched_contract_bid_notice_ids", [])
+        result = [
+            {
+                "bid_notice_id": bid_notice_id,
+                "notice_name": similar_by_id.get(bid_notice_id, {}).get("notice_name"),
+                "organization_code": similar_by_id.get(bid_notice_id, {}).get("organization_code"),
+                "organization_name": similar_by_id.get(bid_notice_id, {}).get("organization_name"),
+                "notice_published_date": similar_by_id.get(bid_notice_id, {}).get("notice_published_date"),
+                "participated": bid_notice_id in participation_ids,
+                "awarded": bid_notice_id in award_ids,
+                "contracted": bid_notice_id in contract_ids,
+                "result": "awarded" if bid_notice_id in award_ids else "contracted" if bid_notice_id in contract_ids else "participation_only",
+                "activity_date": similar_by_id.get(bid_notice_id, {}).get("award_date"),
+                "winning_amount": similar_by_id.get(bid_notice_id, {}).get("winning_amount"),
+                "is_similar_notice": True,
+                "is_same_organization": similar_by_id.get(bid_notice_id, {}).get("organization_code") == relationship.get("organization_code"),
+            }
+            for bid_notice_id in dict.fromkeys([*participation_ids, *award_ids, *contract_ids])
+        ]
+    else:
+        contracted_notice_ids = {
+            item.get("bid_notice_id") for item in raw_items if item.get("result") == "contracted"
+        }
+        opening_notice_ids = {
+            item.get("bid_notice_id") for item in raw_items if item.get("result") != "contracted"
+        }
+        latest_contract_by_notice: dict[str, dict] = {}
+        selected = []
+        for item in raw_items:
+            bid_notice_id = item.get("bid_notice_id")
+            if not bid_notice_id:
+                continue
+            if item.get("result") == "contracted":
+                previous = latest_contract_by_notice.get(bid_notice_id)
+                if previous is None or (item.get("activity_date") or "") > (previous.get("activity_date") or ""):
+                    latest_contract_by_notice[bid_notice_id] = item
+            else:
+                selected.append(item)
+        selected.extend(item for bid_notice_id, item in latest_contract_by_notice.items() if bid_notice_id not in opening_notice_ids)
+        result = []
+        for item in selected:
+            bid_notice_id = item.get("bid_notice_id")
+            source = similar_by_id.get(bid_notice_id, {})
+            activity_result = item.get("result")
+            result.append({
+                "bid_notice_id": bid_notice_id,
+                "notice_name": source.get("notice_name") or item.get("notice_name"),
+                "organization_code": source.get("organization_code"),
+                "organization_name": source.get("organization_name"),
+                "notice_published_date": source.get("notice_published_date") or item.get("notice_published_date"),
+                "bid_classification_number": item.get("bid_classification_number"),
+                "rebid_number": item.get("rebid_number"),
+                "opening_rank": item.get("opening_rank"),
+                "bid_amount": item.get("bid_amount"),
+                "winning_amount": item.get("winning_amount"),
+                "result": activity_result,
+                "activity_date": item.get("activity_date"),
+                "participated": activity_result in {"awarded", "not_awarded", "participation_only"},
+                "awarded": activity_result == "awarded",
+                "contracted": bid_notice_id in contracted_notice_ids,
+                "unified_contract_number": item.get("unified_contract_number"),
+                "is_similar_notice": True,
+                "is_same_organization": source.get("organization_code") == relationship.get("organization_code"),
+            })
+
+    by_key = {
+        (item.get("bid_notice_id"), item.get("bid_classification_number"), item.get("rebid_number")): item
+        for item in result
     }
-
-
-def _title_ngrams(value: str | None) -> set[str]:
-    normalized = re.sub(r"[^가-힣a-z0-9]", "", (value or "").lower())
-    for word in _TITLE_STOP_WORDS:
-        normalized = normalized.replace(word, "")
-    return {normalized[index:index + 2] for index in range(max(0, len(normalized) - 1))}
+    for item in relationship.get("activities") or []:
+        key = (item.get("bid_notice_id"), item.get("bid_classification_number"), item.get("rebid_number"))
+        existing = by_key.get(key)
+        if existing:
+            existing["is_same_organization"] = True
+            continue
+        activity_result = item.get("result")
+        by_key[key] = {
+            "bid_notice_id": item.get("bid_notice_id"),
+            "notice_name": item.get("notice_name"),
+            "organization_code": relationship.get("organization_code"),
+            "organization_name": relationship.get("organization_name"),
+            "notice_published_date": item.get("notice_published_date"),
+            "bid_classification_number": item.get("bid_classification_number"),
+            "rebid_number": item.get("rebid_number"),
+            "opening_rank": item.get("opening_rank"),
+            "bid_amount": item.get("bid_amount"),
+            "winning_amount": item.get("winning_amount"),
+            "result": activity_result,
+            "activity_date": item.get("activity_date"),
+            "participated": activity_result in {"awarded", "not_awarded", "participation_only"},
+            "awarded": activity_result == "awarded",
+            "contracted": activity_result == "contracted",
+            "is_similar_notice": False,
+            "is_same_organization": True,
+        }
+    result = list(by_key.values())
+    return sorted(result, key=lambda item: item.get("activity_date") or "", reverse=True)
 
 
 @router.get("")
@@ -190,6 +285,7 @@ async def get_notice(notice_id: str):
     try:
         req_data = await teoria_client.execute("get_bid_requirements", {"notice_number": number, "notice_order": order}, max_objects=500, provenance=True)
         requirements = [requirement(obj) for obj in objects_of(req_data, "bid_requirement")]
+        requirement_sets = [requirement_set(obj) for obj in objects_of(req_data, "bid_requirement_set")]
         evidence = [requirement_evidence(obj) for obj in objects_of(req_data, "bid_requirement_evidence")]
         evidence_by_requirement: dict[str, list[dict]] = {}
         for item in evidence:
@@ -201,7 +297,7 @@ async def get_notice(notice_id: str):
                 item["evidence"] += evidence_by_requirement.get(str(item["local_id"]), [])
         requirement_state = "ready"
     except HTTPException as exc:
-        if exc.status_code == 409: requirements, requirement_state = [], "not_extracted"
+        if exc.status_code == 409: requirements, requirement_sets, requirement_state = [], [], "not_extracted"
         else: raise
     try:
         finding_data = await teoria_client.execute(
@@ -232,6 +328,7 @@ async def get_notice(notice_id: str):
     return {
         "notice": notice(found[0]),
         "requirements": requirements,
+        "requirement_set": requirement_sets[0] if requirement_sets else None,
         "requirement_state": requirement_state,
         "participation_findings": participation_findings,
         "registry_version": (
@@ -240,6 +337,39 @@ async def get_notice(notice_id: str):
             else base.get("registry", {}).get("version")
         ),
     }
+
+
+@router.get("/{notice_id}/organization-field-companies")
+async def get_notice_organization_field_companies(notice_id: str, period_years: int = Query(5, ge=1, le=10)):
+    try:
+        number, order = split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    canonical_id = f"{number}:{order}"
+    cache_key = f"{canonical_id}:{period_years}"
+    cached = _organization_field_company_cache.get(cache_key)
+    if cached and monotonic() - cached[0] < _MARKET_CONTEXT_CACHE_TTL_SECONDS:
+        return cached[1]
+    data = await teoria_client.execute(
+        "analyze_bid_organization_field_companies",
+        {"bid_notice_id": canonical_id, "period_years": period_years},
+        max_objects=300,
+    )
+    outcome = data.get("outcome") or {}
+    response = {
+        "bid_notice_id": canonical_id,
+        "organization": outcome.get("organization"),
+        "organization_field_companies": outcome.get("organization_field_companies") or [],
+        "market_similar_companies": outcome.get("market_similar_companies") or [],
+        "organization_other_companies": outcome.get("organization_other_companies") or [],
+        "policy": outcome.get("policy") or {},
+        "registry_version": data.get("registry", {}).get("version"),
+    }
+    if len(_organization_field_company_cache) >= 200:
+        oldest_key = min(_organization_field_company_cache, key=lambda key: _organization_field_company_cache[key][0])
+        _organization_field_company_cache.pop(oldest_key, None)
+    _organization_field_company_cache[cache_key] = (monotonic(), response)
+    return response
 
 
 @router.get("/{notice_id}/activity")
@@ -264,49 +394,55 @@ async def get_notice_market_context(notice_id: str):
         number, order = split_notice_id(notice_id)
     except ValueError as exc:
         raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
-    base = await teoria_client.execute("get_bid_notice", {"notice_number": number, "notice_order": order}, max_objects=10)
+    cached = _market_context_cache.get(notice_id)
+    if cached and monotonic() - cached[0] < _MARKET_CONTEXT_CACHE_TTL_SECONDS:
+        return cached[1]
+    base, similar_data = await asyncio.gather(
+        teoria_client.execute("get_bid_notice", {"notice_number": number, "notice_order": order}, max_objects=10),
+        teoria_client.execute(
+            "find_similar_bid_notices",
+            {
+                "bid_notice_id": notice_id,
+                "period_years": 5,
+                "result_statuses": ["awarded", "contracted"],
+                "page": 1,
+                "page_size": 50,
+            },
+            max_objects=200,
+        ),
+    )
     found = objects_of(base, "bid_notice")
     if not found:
         raise HTTPException(404, detail={"code": "bid_notice_not_found", "message": "공고를 찾을 수 없습니다."})
     current = notice(found[0])
-    tokens = _title_tokens(current.get("name"))
-    search_terms = sorted(tokens, key=len, reverse=True)[:3] or [current.get("name", "")[:30]]
-    query = " · ".join(search_terms)
-    now = datetime.now(timezone.utc)
-    inputs = {
-        "opening_at_from": (now - timedelta(days=1825)).isoformat(),
-        "opening_at_to": now.isoformat(),
-        "page": 1,
-        "page_size": 100,
-        "sort": "award_desc",
-    }
-    searches = await asyncio.gather(*(
-        teoria_client.execute("search_bid_awards", {**inputs, "query": term}, max_objects=400)
-        for term in search_terms
-    ))
-    candidates: dict[str, dict] = {}
-    for data in searches:
-        for obj in objects_of(data, "bid_award"):
-            key = str(obj.get("id") or obj.get("properties", {}).get("award_id") or len(candidates))
-            candidates[key] = obj
-    similar = []
-    for obj in candidates.values():
-        item = award(obj)
-        if item.get("notice_number") == number:
-            continue
-        other_tokens = _title_tokens(item.get("notice_name"))
-        overlap = tokens & other_tokens
-        current_grams = _title_ngrams(current.get("name"))
-        other_grams = _title_ngrams(item.get("notice_name"))
-        gram_score = len(current_grams & other_grams) / max(len(current_grams | other_grams), 1)
-        if not overlap and gram_score < 0.35:
-            continue
-        item["similarity_reasons"] = sorted(overlap, key=len, reverse=True)[:4] or ["공고명 표현 유사"]
-        token_score = len(overlap) / max(len(tokens), 1)
-        item["similarity_score"] = round(max(token_score, gram_score) * 100)
-        similar.append(item)
-    similar.sort(key=lambda item: (item["similarity_score"], item.get("award_date") or ""), reverse=True)
-    similar = similar[:12]
+    similar_outcome = similar_data.get("outcome", {})
+    similar_policy = similar_outcome.get("policy", {})
+    similar = [
+        {
+            "id": item.get("bid_notice_id"),
+            "bid_notice_id": item.get("bid_notice_id"),
+            "notice_number": str(item.get("bid_notice_id") or "").split(":", 1)[0],
+            "notice_order": str(item.get("bid_notice_id") or ":").split(":", 1)[-1],
+            "notice_name": item.get("notice_name"),
+            "organization_code": item.get("organization_code"),
+            "organization_name": item.get("organization_name"),
+            "estimated_price": item.get("estimated_price"),
+            "company_number": item.get("winning_company_number"),
+            "company_name": item.get("winning_company_name"),
+            "winning_amount": item.get("winning_amount"),
+            "winning_rate": item.get("winning_rate"),
+            "award_date": item.get("award_date"),
+            "notice_published_date": item.get("notice_published_date"),
+            "similarity_score": round((item.get("similarity_score") or 0) * 100),
+            "similarity_level": item.get("similarity_level"),
+            "similarity_reasons": [
+                _SIMILARITY_REASON_LABELS.get(reason, reason)
+                for reason in item.get("similarity_reasons", [])
+            ],
+            "matched_features": item.get("matched_features", {}),
+        }
+        for item in similar_outcome.get("items", [])
+    ]
     companies: dict[str, dict] = {}
     for item in similar:
         company_number = item.get("company_number")
@@ -375,20 +511,7 @@ async def get_notice_market_context(notice_id: str):
                         "industry_license_reference_date": industry_eligibility.get("reference_date"),
                         "signals": item.get("signals", []),
                         "notice_ids": activity_ids,
-                        "activities": [
-                            {
-                                "bid_notice_id": bid_notice_id,
-                                "notice_name": similar_by_id.get(bid_notice_id, {}).get("notice_name"),
-                                "organization_code": similar_by_id.get(bid_notice_id, {}).get("organization_code"),
-                                "organization_name": similar_by_id.get(bid_notice_id, {}).get("organization_name"),
-                                "participated": bid_notice_id in participation_ids,
-                                "awarded": bid_notice_id in award_ids,
-                                "contracted": bid_notice_id in contract_ids,
-                                "award_date": similar_by_id.get(bid_notice_id, {}).get("award_date"),
-                                "winning_amount": similar_by_id.get(bid_notice_id, {}).get("winning_amount"),
-                            }
-                            for bid_notice_id in activity_ids
-                        ],
+                        "activities": _company_activity_items(similar_history, relationship, similar_by_id),
                     })
         except HTTPException:
             company_items = []
@@ -401,4 +524,16 @@ async def get_notice_market_context(notice_id: str):
         concentration = round(top["award_count"] / len(similar) * 100) if similar else 0
         if concentration >= 50 and len(similar) >= 3:
             signals.append({"type": "concentration", "label": f"상위 업체 낙찰 비중 {concentration}%", "tone": "review"})
-    return {"query_basis": query, "signals": signals, "companies": company_items, "similar_notices": similar, "sample_size": len(similar), "period_years": 5}
+    response = {
+        "query_basis": similar_policy.get("similarity_profile", "bid_similarity_v1"),
+        "signals": signals,
+        "companies": company_items,
+        "similar_notices": similar,
+        "sample_size": len(similar),
+        "period_years": similar_policy.get("period_years", 5),
+    }
+    if len(_market_context_cache) >= 200:
+        oldest_key = min(_market_context_cache, key=lambda key: _market_context_cache[key][0])
+        _market_context_cache.pop(oldest_key, None)
+    _market_context_cache[notice_id] = (monotonic(), response)
+    return response

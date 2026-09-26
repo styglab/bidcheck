@@ -27,11 +27,11 @@ export function useOrganization(code?: string) {
   });
 }
 
-export function useOrganizationActivity(code?: string) {
+export function useOrganizationActivity(code?: string, enabled = true) {
   return useQuery({
     queryKey: ["organization-activity", code],
     queryFn: ({ signal }) => api<{ awards: import("../notices/api").ProcurementAward[]; award_pagination: { total_items?: number }; contracts: import("../notices/api").ProcurementContract[]; contract_pagination: { total_items?: number } }>(`/organizations/${encodeURIComponent(code!)}/activity`, { signal }),
-    enabled: Boolean(code),
+    enabled: Boolean(code) && enabled,
     staleTime: 5 * 60_000,
   });
 }

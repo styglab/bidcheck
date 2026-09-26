@@ -42,7 +42,30 @@ def requirement(obj: dict[str, Any]) -> dict[str, Any]:
     try: value = json.loads(value) if isinstance(value, str) else value
     except json.JSONDecodeError: value = {"text": value}
     observed = next((x.get("observed_at") for x in obj.get("provenance") or [] if x.get("observed_at")), None)
-    return {"id": p.get("requirement_id") or obj.get("id"), "local_id": p.get("local_id"), "type": p.get("requirement_type", "custom"), "operator": p.get("operator"), "title": (value or {}).get("text") if isinstance(value, dict) else str(value or "참가요건"), "value": value, "original_text": p.get("original_text"), "proposition_text": p.get("proposition_text"), "mandatory": p.get("mandatory", True), "confidence": p.get("confidence"), "evidence_summary": p.get("evidence_summary"), "proof_summary": p.get("proof_summary"), "comparison_mode": p.get("comparison_mode"), "observed_at": observed, "assessment_stage": p.get("assessment_stage"), "failure_effect": p.get("failure_effect"), "review_status": p.get("review_status")}
+    value_title = None
+    if isinstance(value, dict):
+        value_title = value.get("text") or value.get("industry_name") or value.get("license_name")
+    title = p.get("title") or value_title or (str(value) if value else "참가요건")
+    return {"id": p.get("requirement_id") or obj.get("id"), "local_id": p.get("local_id"), "type": p.get("requirement_type", "custom"), "operator": p.get("operator"), "title": title, "value": value, "industry_code": p.get("industry_code") or (value.get("industry_code") if isinstance(value, dict) else None), "applicability": p.get("applicability"), "original_text": p.get("original_text"), "proposition_text": p.get("proposition_text"), "mandatory": p.get("mandatory", True), "confidence": p.get("confidence"), "evidence_summary": p.get("evidence_summary"), "proof_summary": p.get("proof_summary"), "comparison_mode": p.get("comparison_mode"), "observed_at": observed, "assessment_stage": p.get("assessment_stage"), "failure_effect": p.get("failure_effect"), "review_status": p.get("review_status")}
+
+
+def requirement_set(obj: dict[str, Any]) -> dict[str, Any]:
+    p = obj.get("properties", {})
+    categories = p.get("requirement_categories")
+    expression = p.get("requirement_expression")
+    try: categories = json.loads(categories) if isinstance(categories, str) else categories
+    except json.JSONDecodeError: categories = {}
+    try: expression = json.loads(expression) if isinstance(expression, str) else expression
+    except json.JSONDecodeError: expression = None
+    return {
+        "id": p.get("requirement_set_id") or obj.get("id"),
+        "requirement_expression": expression,
+        "requirement_categories": categories or {},
+        "region_requirement_status": p.get("region_requirement_status"),
+        "industry_license_requirement_status": p.get("industry_license_requirement_status"),
+        "requirement_extraction_status": p.get("requirement_extraction_status"),
+        "requires_review": p.get("requires_review", False),
+    }
 
 
 def requirement_evidence(obj: dict[str, Any]) -> dict[str, Any]:
