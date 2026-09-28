@@ -10,9 +10,9 @@ export function PublicLayout() {
           <span>Bid</span>Check<i>beta</i>
         </Link>
         <nav>
-          <NavLink to="/notices">공고</NavLink>
-          <NavLink to="/companies">업체</NavLink>
-          <NavLink to="/organizations">기관</NavLink>
+          <NavLink to="/" end>
+            관계 탐색
+          </NavLink>
         </nav>
         <div className="header-actions">
           <ThemeToggle />

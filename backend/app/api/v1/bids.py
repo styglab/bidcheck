@@ -359,6 +359,9 @@ async def get_notice_organization_field_companies(notice_id: str, period_years: 
     response = {
         "bid_notice_id": canonical_id,
         "organization": outcome.get("organization"),
+        "analysis_basis": outcome.get("analysis_basis") or {},
+        "market_structure": outcome.get("market_structure") or {},
+        "market_entry": outcome.get("market_entry") or {},
         "organization_field_companies": outcome.get("organization_field_companies") or [],
         "market_similar_companies": outcome.get("market_similar_companies") or [],
         "organization_other_companies": outcome.get("organization_other_companies") or [],
@@ -370,6 +373,59 @@ async def get_notice_organization_field_companies(notice_id: str, period_years: 
         _organization_field_company_cache.pop(oldest_key, None)
     _organization_field_company_cache[cache_key] = (monotonic(), response)
     return response
+
+
+@router.get("/{notice_id}/organization-company-relationship")
+async def get_notice_organization_company_relationship(
+    notice_id: str,
+    organization_code: str = Query(..., min_length=1, max_length=50),
+    company_number: str = Query(..., min_length=1, max_length=20),
+    period_years: int = Query(5, ge=1, le=10),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(5, ge=1, le=20),
+):
+    try:
+        number, order = split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    canonical_id = f"{number}:{order}"
+    data = await teoria_client.execute(
+        "get_organization_company_relationship",
+        {
+            "organization_code": organization_code,
+            "business_registration_number": company_number,
+            "period_years": period_years,
+            "page": page,
+            "page_size": page_size,
+        },
+        max_objects=100,
+    )
+    outcome = data.get("outcome") or {}
+    return {
+        "bid_notice_id": canonical_id,
+        **outcome,
+        "registry_version": data.get("registry", {}).get("version"),
+    }
+
+
+@router.get("/{notice_id}/project-lineage")
+async def get_notice_project_lineage(notice_id: str, period_years: int = Query(10, ge=1, le=20)):
+    try:
+        number, order = split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    canonical_id = f"{number}:{order}"
+    data = await teoria_client.execute(
+        "find_bid_project_lineage",
+        {"bid_notice_id": canonical_id, "period_years": period_years},
+        max_objects=100,
+    )
+    outcome = data.get("outcome") or {}
+    return {
+        "bid_notice_id": canonical_id,
+        **outcome,
+        "registry_version": data.get("registry", {}).get("version"),
+    }
 
 
 @router.get("/{notice_id}/activity")
