@@ -386,6 +386,13 @@ svg {
 .header-actions > a {
   margin-left: 8px;
 }
+.header-contact {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 12px;
+  color: var(--foreground);
+  font-weight: 600;
+}
 .mobile-menu {
   display: none;
   border: 0;
@@ -884,6 +891,24 @@ footer small {
 @media (max-width: 900px) {
   .site-header > nav {
     display: none;
+  }
+  .site-header > nav.is-open {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: 0 18px 40px -24px rgb(15 23 42 / 0.45);
+  }
+  .site-header > nav.is-open a {
+    padding: 11px 12px;
+    border-radius: 8px;
   }
   .header-actions > a {
     display: none;

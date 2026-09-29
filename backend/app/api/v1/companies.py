@@ -222,3 +222,19 @@ async def company_procurement_activity(
         "contract_count": contract_pagination.get("total_items", len(objects_of(contracts, "contract"))),
         "registry_version": participations.get("registry", {}).get("version"),
     }
+
+
+@router.get("/{business_number}/procurement-profile")
+async def get_company_procurement_analysis(
+    business_number: str,
+    period_years: int = Query(5, ge=1, le=10),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    number = "".join(ch for ch in business_number if ch.isdigit())
+    data = await teoria_client.execute(
+        "analyze_company_procurement_profile",
+        {"business_registration_number": number, "period_years": period_years, "page": page, "page_size": page_size},
+        max_objects=500,
+    )
+    return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}

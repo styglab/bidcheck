@@ -1,12 +1,16 @@
 import { ArrowUpRight, Building2, ExternalLink, Landmark, Trophy } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { EntityTabs } from "@/components/common/entity-tabs";
 import { HistoryBackLink } from "@/components/common/history-back-link";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCompanyActivity, useCompanyProfile } from "../features/company-context/api";
+import {
+  useCompanyActivity,
+  useCompanyProcurementProfile,
+  useCompanyProfile,
+} from "../features/company-context/api";
 
 const money = (value?: number) =>
   value == null
@@ -21,27 +25,10 @@ export function CompanyDetailPage() {
   const [params] = useSearchParams();
   const query = useCompanyProfile(businessNumber);
   const activity = useCompanyActivity(businessNumber);
+  const procurement = useCompanyProcurementProfile(businessNumber);
   const [tab, setTab] = useState("relationships");
-  const organizationRelationships = useMemo(() => {
-    const grouped = new Map<
-      string,
-      { code?: string; name: string; count: number; amount: number; latest?: string }
-    >();
-    for (const award of activity.data?.awards ?? []) {
-      const key = award.organization_code || award.organization_name || "unknown";
-      const current = grouped.get(key) ?? {
-        code: award.organization_code,
-        name: award.organization_name ?? "기관명 미상",
-        count: 0,
-        amount: 0,
-      };
-      current.count += 1;
-      current.amount += award.winning_amount ?? 0;
-      if (!current.latest || (award.award_date ?? "") > current.latest) current.latest = award.award_date;
-      grouped.set(key, current);
-    }
-    return [...grouped.values()].sort((a, b) => b.count - a.count || b.amount - a.amount);
-  }, [activity.data?.awards]);
+  const organizationRelationships = procurement.data?.organization_relationships ?? [];
+  const summary = procurement.data?.summary;
 
   if (query.isLoading)
     return (
@@ -61,7 +48,8 @@ export function CompanyDetailPage() {
   const data = query.data!;
   const registration = data.business_registration[0] ?? {};
   const name =
-    params.get("name") ?? String(registration.business_name ?? registration.company_name ?? "업체 정보");
+    params.get("name") ??
+    String(registration.business_name ?? registration.company_name ?? procurement.data?.company.name ?? "업체 정보");
 
   return (
     <PageContainer className="max-w-7xl">
@@ -79,20 +67,22 @@ export function CompanyDetailPage() {
             <p className="mt-2 text-sm text-muted-foreground">사업자등록번호 {businessNumber}</p>
           </div>
         </div>
-        <dl className="mt-7 grid gap-3 sm:grid-cols-3">
+        <dl className="mt-7 grid gap-3 sm:grid-cols-4">
           <div className="rounded-xl bg-muted/50 p-4">
-            <dt className="text-xs text-muted-foreground">확인된 낙찰</dt>
-            <dd className="mt-1 text-xl font-bold">{activity.data?.award_pagination.total_items ?? "-"}건</dd>
+            <dt className="text-xs text-muted-foreground">입찰 참여</dt>
+            <dd className="mt-1 text-xl font-bold">{summary?.participation_count ?? "-"}건</dd>
           </div>
           <div className="rounded-xl bg-muted/50 p-4">
-            <dt className="text-xs text-muted-foreground">연결된 기관</dt>
-            <dd className="mt-1 text-xl font-bold">
-              {activity.data ? `${organizationRelationships.length}곳` : "-"}
-            </dd>
+            <dt className="text-xs text-muted-foreground">낙찰</dt>
+            <dd className="mt-1 text-xl font-bold">{summary?.award_event_count ?? "-"}건</dd>
           </div>
           <div className="rounded-xl bg-muted/50 p-4">
-            <dt className="text-xs text-muted-foreground">확인된 계약</dt>
-            <dd className="mt-1 text-xl font-bold">{activity.data?.contract_count ?? "-"}건</dd>
+            <dt className="text-xs text-muted-foreground">계약</dt>
+            <dd className="mt-1 text-xl font-bold">{summary?.contract_event_count ?? "-"}건</dd>
+          </div>
+          <div className="rounded-xl bg-muted/50 p-4">
+            <dt className="text-xs text-muted-foreground">누적 계약금액</dt>
+            <dd className="mt-1 text-xl font-bold">{money(summary?.total_attributed_contract_amount)}</dd>
           </div>
         </dl>
       </header>
@@ -122,44 +112,50 @@ export function CompanyDetailPage() {
                 <p className="text-xs font-semibold text-teal-700">업체 ↔ 기관</p>
                 <h2 className="mt-2 text-xl font-bold">주요 거래기관</h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  확인된 낙찰 이력을 기준으로 이 업체와 연결된 발주기관을 보여줍니다.
+                  최근 5년 참여·낙찰·계약을 통합해 이 업체와 연결된 발주기관을 보여줍니다.
                 </p>
-                <div className="mt-5 divide-y overflow-hidden rounded-2xl border bg-card">
-                  {organizationRelationships.slice(0, 6).map((organization) =>
-                    organization.code ? (
-                      <Link
-                        key={organization.code}
-                        to={`/organizations/${encodeURIComponent(organization.code)}`}
-                        className="group grid gap-3 p-5 hover:bg-teal-50/35 dark:hover:bg-teal-950/10 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                      >
-                        <div className="min-w-0">
-                          <strong className="block truncate group-hover:text-teal-700">
-                            {organization.name}
-                          </strong>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            낙찰 {organization.count}건 · 확인 금액 {money(organization.amount)}
-                            {organization.latest ? ` · 최근 ${organization.latest}` : ""}
-                          </p>
-                        </div>
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700">
-                          기관 관계 보기 <ArrowUpRight size={13} />
-                        </span>
-                      </Link>
-                    ) : (
-                      <div key={organization.name} className="p-5">
-                        <strong>{organization.name}</strong>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          낙찰 {organization.count}건 · {money(organization.amount)}
-                        </p>
-                      </div>
-                    ),
-                  )}
+                <div className="mt-5 overflow-x-auto rounded-2xl border bg-card">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">기관</th>
+                        <th className="px-3 py-3 text-right font-semibold">참여</th>
+                        <th className="px-3 py-3 text-right font-semibold">낙찰</th>
+                        <th className="px-3 py-3 text-right font-semibold">계약</th>
+                        <th className="px-3 py-3 text-right font-semibold">계약금액</th>
+                        <th className="px-3 py-3 text-right font-semibold">최근 거래</th>
+                        <th className="px-4 py-3 text-right font-semibold">활동 연도</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {organizationRelationships.slice(0, 10).map((organization) => (
+                        <tr className="hover:bg-teal-50/35 dark:hover:bg-teal-950/10" key={organization.organization_code ?? organization.organization_name}>
+                          <td className="px-4 py-3">
+                            {organization.organization_code ? (
+                              <Link className="font-semibold hover:text-teal-700 hover:underline" to={`/organizations/${encodeURIComponent(organization.organization_code)}`}>
+                                {organization.organization_name}
+                              </Link>
+                            ) : <span className="font-semibold">{organization.organization_name}</span>}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums">{organization.participation_count}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">{organization.award_event_count}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">{organization.contract_event_count}</td>
+                          <td className="px-3 py-3 text-right font-medium tabular-nums">{money(organization.total_attributed_contract_amount)}{organization.amount_completeness !== "complete" ? "*" : ""}</td>
+                          <td className="px-3 py-3 text-right text-muted-foreground">{organization.latest_activity_date?.slice(0, 7) ?? "-"}</td>
+                          <td className="px-4 py-3 text-right text-muted-foreground">{Math.min(5, organization.active_year_count)}개 연도</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                   {!organizationRelationships.length && (
                     <p className="p-8 text-center text-sm text-muted-foreground">
                       연결된 발주기관이 아직 확인되지 않았습니다.
                     </p>
                   )}
                 </div>
+                {organizationRelationships.some((item) => item.amount_completeness !== "complete") && (
+                  <p className="mt-2 text-xs text-muted-foreground">* 일부 계약은 업체 귀속금액이 불완전할 수 있습니다.</p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-semibold text-blue-700">업체 ↔ 분야</p>

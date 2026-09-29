@@ -101,3 +101,44 @@ export function useCompanyActivity(businessNumber?: string) {
     staleTime: 30 * 60_000,
   });
 }
+
+export type CompanyProcurementProfile = {
+  company: { business_registration_number: string; name: string };
+  summary: import("../organizations/api").ProcurementProfileSummary;
+  organization_relationships: import("../organizations/api").ProcurementRelationship[];
+  yearly_activity: Array<{
+    year: number;
+    notice_count: number;
+    award_event_count: number;
+    contract_event_count: number;
+    attributed_contract_amount?: number;
+    amount_completeness: "complete" | "partial" | "unknown";
+  }>;
+  field_distribution: Array<{
+    field_code: string;
+    field_name: string;
+    event_count: number;
+    attributed_contract_amount?: number;
+    amount_share?: number;
+  }>;
+  recent_activity: Array<{
+    bid_notice_id: string;
+    notice_name: string;
+    activity_type: "participation" | "award" | "contract";
+    activity_date?: string;
+    organization_code?: string;
+    organization_name?: string;
+  }>;
+  analysis_basis: { period_from?: string; period_to?: string; period_years?: number };
+  data_completeness: { status?: string; missing_reasons?: string[] };
+  registry_version?: string;
+};
+export function useCompanyProcurementProfile(businessNumber?: string) {
+  return useQuery({
+    queryKey: ["company-procurement-profile", businessNumber],
+    queryFn: ({ signal }) =>
+      api<CompanyProcurementProfile>(`/companies/${encodeURIComponent(businessNumber!)}/procurement-profile`, { signal }),
+    enabled: Boolean(businessNumber),
+    staleTime: 10 * 60_000,
+  });
+}

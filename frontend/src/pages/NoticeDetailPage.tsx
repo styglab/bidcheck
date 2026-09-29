@@ -1407,13 +1407,6 @@ export function NoticeDetailPage() {
                                 </div>
                               </details>
                             ) : null}
-                            <button
-                              className="mt-4 text-xs font-semibold text-blue-800 hover:underline"
-                              onClick={() => openPlayerRelationship(item.company_number)}
-                              type="button"
-                            >
-                              {item.company_name} × {notice.organization} 관계 보기
-                            </button>
                           </article>
                         ))}
                       </div>

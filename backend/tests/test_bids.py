@@ -103,6 +103,33 @@ def test_search_accepts_other_work_type(monkeypatch):
     assert all(call["work_type"] == "other" for call in calls)
 
 
+def test_search_forwards_hierarchical_field_filters(monkeypatch):
+    calls = []
+
+    async def execute(capability, inputs, **options):
+        calls.append(inputs)
+        return {
+            "objects": [],
+            "pagination": {"page": 1, "page_size": 5, "total_items": 0, "total_pages": 0},
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get(
+        "/api/v1/bids?work_type=service&large_category=ICT%20%EC%84%9C%EB%B9%84%EC%8A%A4"
+        "&middle_category=SW%20%EB%B0%8F%20%EC%8B%9C%EC%8A%A4%ED%85%9C%20%EA%B0%9C%EB%B0%9C"
+        "&field_code=81111599&sort=published_desc&page=1&page_size=5"
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["work_type"] == "service"
+    assert calls[0]["large_category"] == "ICT 서비스"
+    assert calls[0]["middle_category"] == "SW 및 시스템 개발"
+    assert calls[0]["field_code"] == "81111599"
+    assert calls[0]["sort"] == "published_desc"
+
+
 def test_notice_detail_attaches_document_evidence_to_requirement(monkeypatch):
     async def execute(capability, inputs, **options):
         if capability == "get_bid_notice":

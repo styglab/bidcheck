@@ -149,13 +149,18 @@ async def search_notices(
     price_min: int | None = Query(None, ge=0), price_max: int | None = Query(None, ge=0),
     notice_organization_code: str | None = Query(None, max_length=50),
     demand_organization_code: str | None = Query(None, max_length=50),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
+    field_code: str | None = Query(None, max_length=20),
+    include_history: bool = Query(False),
     sort: str = Query("published_desc", pattern="^(deadline_asc|published_desc)$"),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
 ):
     cache_key = (
         q, published_from, published_to, deadline_from, deadline_to, contract_method,
         work_type, price_min, price_max, notice_organization_code,
-        demand_organization_code, sort, page, page_size,
+        demand_organization_code, large_category, middle_category, field_code,
+        include_history, sort, page, page_size,
     )
     cached = _notice_search_cache.get(cache_key)
     if cached and monotonic() - cached[0] < _NOTICE_SEARCH_CACHE_TTL_SECONDS:
@@ -163,22 +168,23 @@ async def search_notices(
     end = published_to or datetime.now(timezone.utc)
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
-    start = published_from or end - timedelta(days=90)
+    start = published_from or end - timedelta(days=365 * 5 if include_history else 90)
     if start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
     inputs = {
         "notice_published_at_from": start.isoformat(),
         "notice_published_at_to": end.isoformat(),
-        "bid_statuses": ["scheduled", "open", "unknown"],
-        "notice_status": "active",
         "sort": sort,
         "page": page,
         "page_size": page_size,
     }
+    if not include_history:
+        inputs["bid_statuses"] = ["scheduled", "open", "unknown"]
+        inputs["notice_status"] = "active"
     if work_type == "none":
         return {"items": [], "pagination": {"page": page, "page_size": page_size, "total_items": 0, "total_pages": 0}, "truncated": False, "registry_version": None}
     work_types = list(dict.fromkeys(work_type.split(","))) if work_type else []
-    optional = {"query": q, "bid_deadline_at_from": deadline_from.isoformat() if deadline_from else None, "bid_deadline_at_to": deadline_to.isoformat() if deadline_to else None, "contract_method_name": contract_method, "estimated_price_min": price_min, "estimated_price_max": price_max, "notice_organization_code": notice_organization_code, "demand_organization_code": demand_organization_code}
+    optional = {"query": q, "bid_deadline_at_from": deadline_from.isoformat() if deadline_from else None, "bid_deadline_at_to": deadline_to.isoformat() if deadline_to else None, "contract_method_name": contract_method, "estimated_price_min": price_min, "estimated_price_max": price_max, "notice_organization_code": notice_organization_code, "demand_organization_code": demand_organization_code, "large_category": large_category, "middle_category": middle_category, "field_code": field_code}
     inputs.update({key: value for key, value in optional.items() if value not in (None, "")})
     if len(work_types) <= 1:
         if work_types:
@@ -442,6 +448,20 @@ async def get_notice_activity(notice_id: str):
     contract_task = teoria_client.execute("get_bid_notice_contracts", {"notice_number": number, "page": 1, "page_size": 20}, max_objects=60)
     participations, awards, contracts = await asyncio.gather(participation_task, award_task, contract_task)
     return {"participations": [opening_participation(obj) for obj in objects_of(participations, "bid_opening_participation")], "awards": [award(obj) for obj in objects_of(awards, "bid_award") if obj.get("properties", {}).get("notice_number") == number], "contracts": [contract(obj) for obj in objects_of(contracts, "contract")], "contract_pagination": contracts.get("pagination", {})}
+
+
+@router.get("/{notice_id}/relationship-context")
+async def get_bid_relationship_context(notice_id: str, relationship_history_years: int = Query(5, ge=1, le=10)):
+    try:
+        split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    data = await teoria_client.execute(
+        "get_bid_notice_relationship_context",
+        {"bid_notice_id": notice_id, "relationship_history_years": relationship_history_years},
+        max_objects=500,
+    )
+    return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
 
 
 @router.get("/{notice_id}/market-context")

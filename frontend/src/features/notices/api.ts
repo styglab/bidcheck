@@ -6,6 +6,10 @@ export type Notice = {
   notice_order: string;
   name: string;
   work_type: string;
+  field_code?: string;
+  field_name?: string;
+  large_category?: string;
+  middle_category?: string;
   status: string;
   organization: string;
   organization_code?: string;
@@ -92,6 +96,10 @@ export type NoticeFilters = {
   price_max?: string;
   notice_organization_code?: string;
   demand_organization_code?: string;
+  large_category?: string;
+  middle_category?: string;
+  field_code?: string;
+  include_history?: boolean;
   sort?: string;
   page?: number;
   page_size?: number;
@@ -130,8 +138,8 @@ export function noticeQueryOptions(filters: NoticeFilters = {}) {
     staleTime: 60_000,
   });
 }
-export function useNotices(filters: NoticeFilters = {}) {
-  return useQuery(noticeQueryOptions(filters));
+export function useNotices(filters: NoticeFilters = {}, enabled = true) {
+  return useQuery({ ...noticeQueryOptions(filters), enabled });
 }
 export function useNotice(noticeId?: string) {
   return useQuery({
@@ -197,6 +205,52 @@ export function useNoticeActivity(noticeId?: string) {
       }>(`/bids/${encodeURIComponent(noticeId!)}/activity`, { signal }),
     enabled: Boolean(noticeId),
     staleTime: 5 * 60_000,
+  });
+}
+export type BidRelationshipContext = {
+  bid_notice: { bid_notice_id: string; notice_name: string; organization_code?: string; organization_name?: string };
+  lifecycle: { status: string; participation_count: number; award_count: number; contract_count: number };
+  participants: Array<{
+    business_registration_number?: string;
+    company_name?: string;
+    opening_rank?: number;
+    bid_amount?: number;
+    bid_rate?: number | string;
+    result?: string;
+    current_award?: { awarded?: boolean; award_date?: string; winning_amount?: number; winning_rate?: number | string };
+    current_contract?: {
+      contracted?: boolean;
+      contract_date?: string;
+      contract_amount?: number;
+      attributed_contract_amount?: number;
+      company_role?: string;
+      share_percent?: number;
+      amount_completeness?: "complete" | "partial" | "unknown";
+    };
+    prior_organization_relationship?: {
+      participation_count?: number;
+      award_event_count?: number;
+      contract_event_count?: number;
+      total_attributed_contract_amount?: number;
+      amount_completeness?: "complete" | "partial" | "unknown";
+      first_activity_date?: string;
+      latest_activity_date?: string;
+      active_years?: number[];
+      yearly_activity?: Array<Record<string, unknown>>;
+    };
+  }>;
+  contracts: Array<Record<string, unknown>>;
+  analysis_basis: { period_from?: string; period_to?: string; prior_relationship_cutoff?: string };
+  data_completeness: { status?: string; missing_reasons?: string[] };
+  registry_version?: string;
+};
+export function useBidRelationshipContext(noticeId?: string) {
+  return useQuery({
+    queryKey: ["bid-relationship-context", noticeId],
+    queryFn: ({ signal }) =>
+      api<BidRelationshipContext>(`/bids/${encodeURIComponent(noticeId!)}/relationship-context`, { signal }),
+    enabled: Boolean(noticeId),
+    staleTime: 10 * 60_000,
   });
 }
 export type NoticeMarketContext = {
@@ -343,6 +397,9 @@ export type OrganizationFieldCompaniesResponse = {
   organization?: { code?: string; name?: string };
   analysis_basis?: {
     period_years?: number;
+    period_from?: string;
+    period_to?: string;
+    period_type?: string;
     work_type?: string;
     field?: { code?: string; label?: string };
     industries?: Array<{ code: string; name: string }>;
@@ -411,7 +468,7 @@ export function useNoticeOrganizationFieldCompanies(noticeId?: string, enabled =
   });
 }
 export type OrganizationCompanyRelationshipResponse = {
-  bid_notice_id: string;
+  bid_notice_id?: string;
   organization?: { code?: string; name?: string };
   company?: { business_registration_number?: string; name?: string };
   analysis_basis?: {
@@ -421,6 +478,10 @@ export type OrganizationCompanyRelationshipResponse = {
   };
   summary?: {
     award_event_count?: number;
+    contract_event_count?: number;
+    contract_version_count?: number;
+    unique_project_count?: number;
+    total_attributed_contract_amount?: number;
     first_award_date?: string;
     latest_award_date?: string;
     active_years?: number[];
@@ -430,9 +491,11 @@ export type OrganizationCompanyRelationshipResponse = {
   };
   yearly_activity?: Array<{
     year: number;
-    event_count: number;
+    event_count?: number;
+    award_event_count?: number;
     attributed_event_count?: number;
     total_attributed_amount?: number;
+    attributed_contract_amount?: number;
   }>;
   events: Array<{
     award_event_id: string;
