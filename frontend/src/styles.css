@@ -2261,3 +2261,30 @@ footer small {
     max-height: 62%;
   }
 }
+
+.activity-notice-link,
+.activity-company-link {
+  transition: color 150ms ease;
+}
+
+.activity-notice-link:hover {
+  color: #2563eb !important;
+}
+
+.activity-company-link {
+  color: #1e40af !important;
+}
+
+.activity-company-link:hover {
+  color: #60a5fa !important;
+}
+
+.contract-company-picker-trigger,
+.contract-company-picker-trigger strong {
+  font-weight: 700 !important;
+}
+
+.dark .activity-notice-link:hover,
+.dark .activity-company-link:hover {
+  color: #60a5fa !important;
+}

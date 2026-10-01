@@ -1,6 +1,8 @@
-import { ArrowUpRight, CircleHelp, ExternalLink, FileText, Landmark, LoaderCircle, Search, X } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
+import { ArrowUpRight, ChevronDown, CircleHelp, Landmark, LoaderCircle, Search, X } from "lucide-react";
+import { Slider } from "radix-ui";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { EntityTabs } from "@/components/common/entity-tabs";
 import { PageError, SectionError } from "@/components/common/error-state";
 import { HistoryBackLink } from "@/components/common/history-back-link";
@@ -10,12 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useNotices } from "../features/notices/api";
 import {
   useOrganization,
-  useOrganizationActivity,
   useOrganizationCompanyRelationship,
+  useOrganizationProcurementActivity,
   useOrganizationProcurementProfile,
+  type ProcurementActivityStage,
 } from "../features/organizations/api";
 
 const money = (value?: number) => {
@@ -53,10 +55,61 @@ const fieldIdentity = (field: { field_code?: string; middle_category?: string; l
     : base;
 };
 
+function UpdatingOverlay({ show, label = "불러오는 중" }: { show: boolean; label?: string }) {
+  if (!show) return null;
+  return <div className="absolute inset-0 z-20 grid place-items-center rounded-2xl bg-background/45 backdrop-blur-[1px]" role="status"><span className="inline-flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-sm"><LoaderCircle className="size-4 animate-spin text-[var(--brand)]" />{label}</span></div>;
+}
+
+function MetricHelp({ label, children }: { label: string; children: React.ReactNode }) {
+  return <button className="group relative inline-flex rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={label} type="button"><CircleHelp className="size-3.5" aria-hidden="true" /><span className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-64 rounded-xl border bg-popover p-3 text-left text-xs font-normal leading-relaxed text-popover-foreground shadow-lg group-hover:block group-focus:block">{children}</span></button>;
+}
+
+function ContractCompanyPicker({ companies, label }: { companies: Array<{ business_registration_number?: string; company_name?: string; company_role_label?: string; share_percent?: number | null }>; label: string }) {
+  const available = companies.filter((company) => company.company_name);
+  if (available.length <= 1) {
+    const company = available[0];
+    return company?.business_registration_number
+      ? <Link className="activity-company-link block truncate text-sm font-semibold" to={`/companies/${encodeURIComponent(company.business_registration_number)}`}>{company.company_name}</Link>
+      : <span className="block truncate text-sm font-medium">{company?.company_name ?? label}</span>;
+  }
+  return <Popover.Root>
+    <Popover.Trigger asChild>
+      <button className="activity-company-link contract-company-picker-trigger inline-flex max-w-full items-center gap-1 rounded-sm text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2" type="button">
+        <strong className="truncate">{label}</strong><ChevronDown className="size-3.5 shrink-0" />
+      </button>
+    </Popover.Trigger>
+    <Popover.Portal>
+      <Popover.Content align="start" className="z-50 w-72 overflow-hidden rounded-xl border bg-popover p-2 text-popover-foreground shadow-lg" collisionPadding={12} sideOffset={8}>
+        <div className="border-b px-2 py-2">
+          <strong className="block text-sm">계약 업체</strong>
+          <span className="mt-0.5 block text-xs text-muted-foreground">업체를 선택하면 상세로 이동합니다.</span>
+        </div>
+        <div className="max-h-64 overflow-y-auto pt-1.5">
+          {available.map((company, index) => company.business_registration_number
+            ? <Popover.Close asChild key={`${company.business_registration_number}-${index}`}><Link className="group flex items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 hover:bg-blue-50 focus-visible:bg-blue-50 focus-visible:outline-none dark:hover:bg-blue-950/40" to={`/companies/${encodeURIComponent(company.business_registration_number)}`}><strong className="activity-company-link min-w-0 truncate text-sm">{company.company_name}</strong>{company.share_percent != null && <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--brand)] group-hover:bg-white dark:bg-blue-950/50 dark:group-hover:bg-blue-950">{company.share_percent}%</span>}</Link></Popover.Close>
+            : <div className="flex items-center justify-between gap-3 rounded-lg px-2.5 py-2.5" key={`${company.company_name}-${index}`}><strong className="min-w-0 truncate text-sm">{company.company_name}</strong>{company.share_percent != null && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{company.share_percent}%</span>}</div>)}
+        </div>
+      </Popover.Content>
+    </Popover.Portal>
+  </Popover.Root>;
+}
+
+function ListPagination({ page, totalPages, onChange, loading = false }: { page: number; totalPages?: number; onChange: (page: number) => void; loading?: boolean }) {
+  if (!totalPages || totalPages <= 1) return null;
+  const pages = totalPages <= 5
+    ? Array.from({ length: totalPages }, (_, index) => index + 1)
+    : page <= 3
+      ? [1, 2, 3, 4, totalPages]
+      : page >= totalPages - 2
+        ? [1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+        : [1, page - 1, page, page + 1, totalPages];
+  return <nav className="mt-5 flex items-center justify-center gap-1" aria-label="목록 페이지"><Button aria-label="이전 페이지" disabled={loading || page <= 1} onClick={() => onChange(page - 1)} size="sm" variant="outline">이전</Button><span className="flex w-72 items-center justify-center gap-1">{pages.map((value, index) => <span className="contents" key={value}>{index > 0 && value - pages[index - 1] > 1 && <span className="w-5 text-center text-sm text-muted-foreground">…</span>}<Button aria-current={page === value ? "page" : undefined} className={`w-9 px-0 ${page === value ? "border-[var(--brand)] bg-[var(--brand)] text-white hover:bg-blue-700" : ""}`} disabled={loading} onClick={() => onChange(value)} size="sm" variant="outline">{value}</Button></span>)}</span><Button aria-label="다음 페이지" disabled={loading || page >= totalPages} onClick={() => onChange(page + 1)} size="sm" variant="outline">다음</Button></nav>;
+}
+
 const noticeStatus: Record<string, { label: string; className: string }> = {
   scheduled: { label: "입찰 예정", className: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300" },
-  open: { label: "진행 중", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" },
-  closed: { label: "마감", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  open: { label: "입찰 중", className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" },
+  closed: { label: "입찰 마감", className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
   awarded: { label: "낙찰", className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" },
   contracted: { label: "계약", className: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" },
   cancelled: { label: "취소", className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" },
@@ -66,46 +119,48 @@ const noticeStatus: Record<string, { label: string; className: string }> = {
 export function OrganizationDetailPage() {
   const { organizationId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedPeriod = Number(searchParams.get("period") ?? 5);
-  const periodYears = requestedPeriod === 1 || requestedPeriod === 3 ? requestedPeriod : 5;
   const currentYear = new Date().getUTCFullYear();
-  const fiscalStartYear = currentYear - periodYears + 1;
-  const periodLabel = periodYears === 1 ? `${currentYear}년` : `${fiscalStartYear}–${currentYear}년`;
-  const tab = searchParams.get("tab") ?? "overview";
+  const earliestYear = 2022;
+  const legacyPeriod = Number(searchParams.get("period") ?? 5);
+  const requestedFromYear = Number(searchParams.get("fromYear") ?? currentYear - (legacyPeriod === 1 || legacyPeriod === 3 ? legacyPeriod : 5) + 1);
+  const requestedToYear = Number(searchParams.get("toYear") ?? currentYear);
+  const fiscalStartYear = Math.max(earliestYear, Math.min(requestedFromYear, currentYear));
+  const fiscalEndYear = Math.max(fiscalStartYear, Math.min(requestedToYear, currentYear));
+  const periodYears = fiscalEndYear - fiscalStartYear + 1;
+  const periodLabel = fiscalStartYear === fiscalEndYear ? `${fiscalStartYear}년` : `${fiscalStartYear}–${fiscalEndYear}년`;
+  const periodRange = { from: fiscalStartYear, to: fiscalEndYear };
+  const [draftPeriod, setDraftPeriod] = useState([fiscalStartYear, fiscalEndYear]);
+  useEffect(() => setDraftPeriod([fiscalStartYear, fiscalEndYear]), [fiscalStartYear, fiscalEndYear]);
+  const requestedTab = searchParams.get("tab") ?? "overview";
+  const tab = requestedTab === "awards" || requestedTab === "contracts" || requestedTab === "outcomes" ? "notices" : requestedTab;
   const selectedLargeCategory = searchParams.get("large") ?? undefined;
   const selectedMiddleCategory = searchParams.get("middle") ?? undefined;
   const selectedFieldCode = searchParams.get("field") ?? undefined;
   const selectedWorkType = searchParams.get("workType") ?? undefined;
+  const requestedPage = Number(searchParams.get("page") ?? 1);
+  const listPage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const listQuery = searchParams.get("q") ?? "";
+  const requestedStage = searchParams.get("stage") ?? "all";
+  const activityStage: ProcurementActivityStage = ["all", "scheduled", "open", "closed", "award", "contract", "failed_or_cancelled"].includes(requestedStage) ? requestedStage as ProcurementActivityStage : "all";
+  const companyQuery = searchParams.get("companyQ") ?? "";
   const organizationQuery = useOrganization(organizationId);
-  const noticeQuery = useNotices({
-    demand_organization_code: organizationId,
-    published_from: `${fiscalStartYear}-01-01`,
-    include_history: true,
-    work_type: selectedWorkType && selectedWorkType !== "unknown" ? selectedWorkType : undefined,
-    large_category: selectedLargeCategory,
-    middle_category: selectedMiddleCategory,
-    field_code: selectedFieldCode,
-    sort: "published_desc",
-    page_size: tab === "overview" ? 5 : 20,
-  }, tab === "overview" || tab === "notices");
-  const activity = useOrganizationActivity(
-    organizationId,
-    tab === "awards" || tab === "contracts",
-    periodYears,
-  );
+  const activity = useOrganizationProcurementActivity(organizationId, true, periodRange, tab === "notices" ? listPage : 1, tab === "notices" ? listQuery || undefined : undefined, tab === "notices" ? activityStage : "all", {
+    largeCategory: selectedLargeCategory, middleCategory: selectedMiddleCategory, fieldCode: selectedFieldCode, workType: selectedWorkType,
+  });
   const procurement = useOrganizationProcurementProfile(organizationId, periodYears, {
     largeCategory: selectedLargeCategory,
     middleCategory: selectedMiddleCategory,
     fieldCode: selectedFieldCode,
     workType: selectedWorkType,
-  });
-  const overallProcurement = useOrganizationProcurementProfile(organizationId, periodYears, {}, Boolean(selectedWorkType));
+  }, true, periodRange, { page: 1, query: tab === "companies" ? companyQuery || undefined : undefined, sort: "contract_amount_desc" });
+  const overallProcurement = useOrganizationProcurementProfile(organizationId, periodYears, {}, Boolean(selectedWorkType), periodRange);
   const selectedCompanyNumber = searchParams.get("company") ?? undefined;
-  const [companySearch, setCompanySearch] = useState("");
+  const [companySearch, setCompanySearch] = useState(companyQuery);
+  useEffect(() => setCompanySearch(companyQuery), [companyQuery]);
+  const [listSearch, setListSearch] = useState(listQuery);
   const [showAllFields, setShowAllFields] = useState(false);
   const organization = organizationQuery.data?.organization;
-  const notices = noticeQuery.data?.items ?? [];
-  const companyRelationships = procurement.data?.company_relationships ?? [];
+  const companyRelationships = (procurement.data?.company_relationships ?? []).filter((item) => item.contract_event_count > 0);
   const summary = procurement.data?.summary;
   const supplierEntry = summary?.rolling_12m_supplier_entry;
   const isUpdating = procurement.isFetching && Boolean(procurement.data);
@@ -145,12 +200,11 @@ export function OrganizationDetailPage() {
     selectedCompanyNumber,
     1,
     periodYears,
-    undefined,
+    { largeCategory: selectedLargeCategory, middleCategory: selectedMiddleCategory, fieldCode: selectedFieldCode, workType: selectedWorkType },
     tab === "companies",
+    periodRange,
   );
-  const filteredCompanies = companyRelationships.filter((item) =>
-    (item.company_name ?? "").toLocaleLowerCase().includes(companySearch.trim().toLocaleLowerCase()),
-  );
+  const filteredCompanies = companyRelationships;
   const visibleYearlyActivity = [...(procurement.data?.yearly_activity ?? [])]
     .sort((left, right) => right.year - left.year)
     .slice(0, 5)
@@ -158,14 +212,68 @@ export function OrganizationDetailPage() {
   const visibleRelationshipEvents = useMemo(
     () =>
       (companyRelationship.data?.events ?? []).filter((event) => {
-        const value = event.contract_date ?? event.award_date ?? event.notice_published_date;
-        return !value || Number(value.slice(0, 4)) >= fiscalStartYear;
+        const value = event.attribution_date ?? event.notice_published_date ?? event.first_contract_date ?? event.contract_date ?? event.award_date;
+        const year = value ? Number(value.slice(0, 4)) : undefined;
+        return !year || (year >= fiscalStartYear && year <= fiscalEndYear);
       }),
-    [companyRelationship.data?.events, fiscalStartYear],
+    [companyRelationship.data?.events, fiscalEndYear, fiscalStartYear],
   );
   const setTab = (nextTab: string) => {
     const next = new URLSearchParams(searchParams);
     next.set("tab", nextTab);
+    next.delete("page");
+    next.delete("q");
+    setListSearch("");
+    setSearchParams(next);
+  };
+  const setListPage = (page: number) => {
+    const next = new URLSearchParams(searchParams);
+    if (page <= 1) next.delete("page"); else next.set("page", String(page));
+    setSearchParams(next);
+  };
+  const setActivityStage = (stage: ProcurementActivityStage) => {
+    const next = new URLSearchParams(searchParams);
+    if (stage === "all") next.delete("stage"); else next.set("stage", stage);
+    next.delete("page");
+    setSearchParams(next);
+  };
+  const openActivityStage = (stage: ProcurementActivityStage) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", "notices");
+    if (stage === "all") next.delete("stage"); else next.set("stage", stage);
+    next.delete("page");
+    next.delete("q");
+    setListSearch("");
+    setSearchParams(next);
+  };
+  const submitListSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = new URLSearchParams(searchParams);
+    const value = listSearch.trim();
+    if (value) next.set("q", value); else next.delete("q");
+    next.delete("page");
+    setSearchParams(next);
+  };
+  const clearListSearch = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    next.delete("page");
+    setListSearch("");
+    setSearchParams(next);
+  };
+  const submitCompanySearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = new URLSearchParams(searchParams);
+    const value = companySearch.trim();
+    if (value) next.set("companyQ", value); else next.delete("companyQ");
+    next.delete("company");
+    setSearchParams(next);
+  };
+  const clearCompanySearch = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("companyQ");
+    next.delete("company");
+    setCompanySearch("");
     setSearchParams(next);
   };
   const selectCompany = (companyNumber: string, nextTab = tab) => {
@@ -175,9 +283,12 @@ export function OrganizationDetailPage() {
     else next.set("company", companyNumber);
     setSearchParams(next);
   };
-  const setPeriod = (years: number) => {
+  const setPeriodRange = (range: number[]) => {
     const next = new URLSearchParams(searchParams);
-    next.set("period", String(years));
+    next.set("fromYear", String(range[0]));
+    next.set("toYear", String(range[1]));
+    next.delete("period");
+    next.delete("page");
     setSearchParams(next);
   };
   const selectField = (field: (typeof fieldDistribution)[number]) => {
@@ -188,6 +299,7 @@ export function OrganizationDetailPage() {
     else if (!selectedFieldCode && field.field_code) next.set("field", field.field_code);
     if (!selectedWorkType && field.work_types?.length === 1) next.set("workType", field.work_types[0]);
     next.delete("company");
+    next.delete("page");
     setSearchParams(next);
   };
   const resetFieldTo = (level: "all" | "large" | "middle") => {
@@ -196,6 +308,7 @@ export function OrganizationDetailPage() {
     if (level === "all" || level === "large") next.delete("middle");
     if (level !== "middle" || selectedFieldCode) next.delete("field");
     next.delete("company");
+    next.delete("page");
     setSearchParams(next);
   };
   const setWorkType = (value: string) => {
@@ -205,6 +318,7 @@ export function OrganizationDetailPage() {
     next.delete("middle");
     next.delete("field");
     next.delete("company");
+    next.delete("page");
     setSearchParams(next);
   };
   const clearWorkType = () => {
@@ -214,11 +328,12 @@ export function OrganizationDetailPage() {
     next.delete("middle");
     next.delete("field");
     next.delete("company");
+    next.delete("page");
     setSearchParams(next);
   };
   const resetFilters = () => {
     const next = new URLSearchParams(searchParams);
-    ["period", "workType", "large", "middle", "field", "company"].forEach((key) => next.delete(key));
+    ["period", "fromYear", "toYear", "workType", "large", "middle", "field", "company", "page", "companyQ"].forEach((key) => next.delete(key));
     setSearchParams(next);
   };
   const selectedLargeLabel = selectedLargeCategory ? (appliedField?.large_category ?? selectedLargeCategory) : undefined;
@@ -235,21 +350,40 @@ export function OrganizationDetailPage() {
     return <PageError error={organizationQuery.error} entity="기관 정보" onRetry={() => organizationQuery.refetch()} />;
 
   return (
-    <PageContainer className="max-w-7xl">
+    <PageContainer className="max-w-6xl !pt-5 sm:!pt-7">
       <HistoryBackLink fallbackTo="/organizations" />
-      <header className="mt-7 rounded-2xl border bg-card p-6 sm:p-8">
-        <div className="flex items-start gap-4">
-          <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
-            <Landmark />
+      <section className="mt-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-6" aria-label="조회 조건">
+        <div className="flex flex-wrap items-end gap-4 lg:flex-nowrap">
+          <div className="order-3 w-full min-w-0 lg:ml-auto lg:w-96">
+            <div className="mb-3 flex items-center justify-between gap-3"><p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">조회 연도<MetricHelp label="조회 연도 기준"><strong className="mb-1 block text-foreground">조회 기준</strong>공고는 게시일, 계약만 있는 건은 최초 계약일을 기준으로 조회합니다.</MetricHelp></p><strong className="text-sm tabular-nums">{draftPeriod[0] === draftPeriod[1] ? `${draftPeriod[0]}년` : `${draftPeriod[0]}–${draftPeriod[1]}년`}</strong></div>
+            <Slider.Root aria-label="조회 연도 범위" className="relative flex h-5 w-full touch-none select-none items-center" min={earliestYear} max={currentYear} step={1} minStepsBetweenThumbs={0} value={draftPeriod} onValueChange={setDraftPeriod} onValueCommit={setPeriodRange}>
+              <Slider.Track className="relative h-1 grow rounded-full bg-muted"><Slider.Range className="absolute h-full rounded-full bg-blue-800 dark:bg-blue-500" /></Slider.Track>
+              <Slider.Thumb aria-label="시작 연도" className="block size-4 rounded-full border-2 border-blue-800 bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-blue-100 focus-visible:ring-3 focus-visible:ring-blue-200 dark:border-blue-500" />
+              <Slider.Thumb aria-label="종료 연도" className="block size-4 rounded-full border-2 border-blue-800 bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-blue-100 focus-visible:ring-3 focus-visible:ring-blue-200 dark:border-blue-500" />
+            </Slider.Root>
+            <div className="mt-1.5 flex justify-between text-[11px] tabular-nums text-muted-foreground">{Array.from({ length: currentYear - earliestYear + 1 }, (_, index) => <span key={earliestYear + index}>{earliestYear + index}</span>)}</div>
+          </div>
+          <div className="order-1 w-full sm:w-auto sm:shrink-0">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">조달 유형</p>
+            <Select value={selectedWorkType ?? "all"} onValueChange={setWorkType}><SelectTrigger className="h-10 w-full sm:w-40"><SelectValue /></SelectTrigger><SelectContent position="popper"><SelectItem value="all">전체</SelectItem>{Object.entries(workTypeLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+          </div>
+          <div className="order-2 w-full min-w-0 flex-1 sm:min-w-64">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">분야</p>
+            <Select value="current" onValueChange={(value) => { const field = fieldDistribution.find((item) => fieldIdentity(item) === value); if (field) selectField(field); }} disabled={Boolean(selectedFieldCode || isSingleLevelField)}><SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger><SelectContent position="popper"><SelectItem value="current">{selectedFieldCode ? appliedField?.field_name : isSingleLevelField ? appliedField?.large_category : selectedLargeCategory ? "세부 분야 선택" : "분야 선택"}</SelectItem>{[...fieldDistribution].sort((left, right) => (right.attributed_contract_amount ?? 0) - (left.attributed_contract_amount ?? 0)).map((field) => { const value = fieldIdentity(field); const type = field.large_category === "미분류" && field.work_types?.length === 1 ? workTypeLabel[field.work_types[0]] : undefined; const label = field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"; return value ? <SelectItem key={value} value={value}>{type ? `${type} ${label}` : label} · {money(field.attributed_contract_amount)}</SelectItem> : null; })}</SelectContent></Select>
+          </div>
+        </div>
+        {(selectedWorkType || selectedLargeLabel || selectedMiddleLabel || selectedFieldLabel) && <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900 dark:bg-blue-950/20"><span className="mr-1 font-semibold text-blue-800 dark:text-blue-200">적용 필터</span>{selectedWorkType && <button className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-background px-3 py-1.5 font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950" onClick={clearWorkType} type="button">{workTypeLabel[selectedWorkType]}<X className="size-3" /></button>}{selectedLargeLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-background px-3 py-1.5 font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950" onClick={() => resetFieldTo("all")} type="button">{selectedLargeLabel}<X className="size-3" /></button>}{selectedMiddleLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-background px-3 py-1.5 font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950" onClick={() => resetFieldTo("large")} type="button">{selectedMiddleLabel}<X className="size-3" /></button>}{selectedFieldLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-background px-3 py-1.5 font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950" onClick={() => resetFieldTo("middle")} type="button">{selectedFieldLabel}<X className="size-3" /></button>}<button className="ml-auto px-2 py-1.5 font-medium text-blue-800 hover:underline dark:text-blue-200" onClick={resetFilters} type="button">전체 초기화</button></div>}
+        {isUpdating && <div className="mt-4 flex items-center justify-end gap-1.5 text-xs font-medium text-blue-800 dark:text-blue-300" role="status"><LoaderCircle className="size-3.5 animate-spin" /> 조건 적용 중</div>}
+      </section>
+      <article className="mt-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+      <header className="border-b pb-5">
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+            <Landmark className="size-5" />
           </span>
           <div className="min-w-0">
-            <Badge className="border-0 bg-violet-100 text-violet-800 hover:bg-violet-100 dark:bg-violet-950 dark:text-violet-200">
-              기관
-            </Badge>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight">{organization?.name}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {organization?.jurisdiction_type ?? "기관 유형 미상"} · 기관코드 {organizationId}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Badge className="border-0 bg-violet-100 text-violet-800 hover:bg-violet-100 dark:bg-violet-950 dark:text-violet-200">기관</Badge><span>{organization?.jurisdiction_type ?? "기관 유형 미상"} · 기관코드 {organizationId}</span></div>
+            <h1 className="mt-1.5 text-2xl font-bold tracking-tight">{organization?.name}</h1>
           </div>
         </div>
       </header>
@@ -265,82 +399,29 @@ export function OrganizationDetailPage() {
       )}
 
       <>
-          <section className="mt-6 rounded-2xl border bg-card p-5 sm:p-6" aria-label="조회 조건">
-            <div className="flex flex-wrap items-end gap-4 lg:flex-nowrap">
-              <div className="order-3 shrink-0 lg:ml-auto">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">조회 기간 <span className="font-normal">(회계연도)</span></p>
-                <div className="flex rounded-xl bg-muted p-1" aria-label="조회 기간">
-                  {[1, 3, 5].map((years) => { const from = currentYear - years + 1; const label = years === 1 ? `${currentYear}년` : `${from}–${currentYear}`; return <button className={`rounded-lg px-3 py-1.5 text-sm font-medium ${periodYears === years ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`} key={years} onClick={() => setPeriod(years)} title={years === 1 ? `${currentYear}년 1월 1일부터 현재까지` : `${from}년 1월 1일부터 ${currentYear}년 현재까지`} type="button">{label}</button>; })}
-                </div>
-              </div>
-              <div className="order-1 shrink-0">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">조달 유형</p>
-                <Select value={selectedWorkType ?? "all"} onValueChange={setWorkType}>
-                  <SelectTrigger className="h-10 w-40"><SelectValue /></SelectTrigger>
-                  <SelectContent position="popper">
-                    <SelectItem value="all">전체</SelectItem>
-                    {Object.entries(workTypeLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="order-2 min-w-64 flex-1">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">분야</p>
-                <Select value="current" onValueChange={(value) => { const field = fieldDistribution.find((item) => fieldIdentity(item) === value); if (field) selectField(field); }} disabled={Boolean(selectedFieldCode || isSingleLevelField)}>
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent position="popper">
-                    <SelectItem value="current">{selectedFieldCode ? appliedField?.field_name : isSingleLevelField ? appliedField?.large_category : selectedLargeCategory ? "세부 분야 선택" : "분야 선택"}</SelectItem>
-                    {[...fieldDistribution].sort((left, right) => (right.attributed_contract_amount ?? 0) - (left.attributed_contract_amount ?? 0)).map((field) => { const value = fieldIdentity(field); const type = field.large_category === "미분류" && field.work_types?.length === 1 ? workTypeLabel[field.work_types[0]] : undefined; const label = field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"; return value ? <SelectItem key={value} value={value}>{type ? `${type} ${label}` : label} · {money(field.attributed_contract_amount)}</SelectItem> : null; })}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {(selectedWorkType || selectedLargeLabel || selectedMiddleLabel || selectedFieldLabel) && <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-xs dark:border-violet-900 dark:bg-violet-950/20"><span className="mr-1 font-semibold text-violet-800 dark:text-violet-200">적용 필터</span>{selectedWorkType && <button className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-background px-3 py-1.5 font-semibold text-violet-800 shadow-sm hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950" onClick={clearWorkType} type="button">{workTypeLabel[selectedWorkType]}<X className="size-3" /></button>}{selectedLargeLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-background px-3 py-1.5 font-semibold text-violet-800 shadow-sm hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950" onClick={() => resetFieldTo("all")} type="button">{selectedLargeLabel}<X className="size-3" /></button>}{selectedMiddleLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-background px-3 py-1.5 font-semibold text-violet-800 shadow-sm hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950" onClick={() => resetFieldTo("large")} type="button">{selectedMiddleLabel}<X className="size-3" /></button>}{selectedFieldLabel && <button className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-background px-3 py-1.5 font-semibold text-violet-800 shadow-sm hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950" onClick={() => resetFieldTo("middle")} type="button">{selectedFieldLabel}<X className="size-3" /></button>}<button className="ml-auto px-2 py-1.5 font-medium text-violet-800 hover:underline dark:text-violet-200" onClick={resetFilters} type="button">전체 초기화</button></div>}
-            {isUpdating && <div className="mt-4 flex items-center justify-end gap-1.5 text-xs font-medium text-violet-700" role="status"><LoaderCircle className="size-3.5 animate-spin" /> 조건 적용 중</div>}
-          </section>
-
           <EntityTabs
             value={tab}
             onChange={setTab}
             items={[
               { id: "overview", label: "개요" },
-              { id: "notices", label: "공고", count: summary?.notice_count },
-              { id: "awards", label: "낙찰 공고", count: summary?.award_event_count },
-              { id: "contracts", label: "계약 공고", count: summary?.contract_event_count },
-              { id: "companies", label: "관련 업체", count: summary?.company_count },
+              { id: "notices", label: "공고", count: activity.data?.stage_counts?.all ?? activity.data?.pagination.total_items },
+              { id: "companies", label: "계약 업체", count: summary?.company_count },
             ]}
           />
 
-          {tab === "overview" && <section className={`mt-5 transition-opacity ${isUpdating ? "opacity-55" : "opacity-100"}`} aria-busy={isUpdating} aria-labelledby="procurement-summary-title">
-            <h2 className="text-xl font-bold" id="procurement-summary-title">조달 현황</h2>
-            <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {[["공고", `${count(summary?.notice_count ?? noticeQuery.data?.pagination.total_items)}건`], ["계약", `${count(summary?.contract_event_count)}건`], ["관련 업체", summary ? `${count(summary.company_count)}개` : "-"], ["계약금액", money(summary?.total_attributed_contract_amount)]].map(([label, value]) => <div className="rounded-xl bg-muted/50 p-4" key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-bold">{value}</dd></div>)}
-              <div className="rounded-xl bg-muted/50 p-4">
-                <dt className="flex items-center gap-1 text-xs text-muted-foreground">
-                  신규 업체 비중
-                  <button
-                    className="group relative inline-flex rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="신규 업체 비중 계산 기준"
-                    type="button"
-                  >
-                    <CircleHelp className="size-3.5" aria-hidden="true" />
-                    <span className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-64 rounded-xl border bg-popover p-3 text-left text-xs font-normal leading-relaxed text-popover-foreground shadow-lg group-hover:block group-focus:block">
-                      <strong className="mb-1 block text-foreground">계산 기준</strong>
-                      최근 12개월 계약업체 중 최근 5개 회계연도 이력에서 처음 확인된 업체의 비율입니다.
-                      <span className="mt-2 block space-y-0.5 text-[11px] text-muted-foreground">
-                        <span className="block">대상 기간 {supplierEntry?.period_from && supplierEntry?.period_to ? `${supplierEntry.period_from.replaceAll("-", ".")}–${supplierEntry.period_to.replaceAll("-", ".")}` : "최근 12개월"}</span>
-                        {supplierEntry?.history_from && <span className="block">확인 이력 {supplierEntry.history_from.slice(0, 4)}년부터</span>}
-                      </span>
-                    </span>
-                  </button>
-                </dt>
-                <dd className="mt-1 text-xl font-bold">{supplierEntry ? `${(supplierEntry.first_observed_company_rate * 100).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%` : "데이터 없음"}</dd>
-                {supplierEntry && <><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, supplierEntry.first_observed_company_rate * 100))}%` }} /></div><p className="mt-1.5 text-[11px] text-muted-foreground">신규 {count(supplierEntry.first_observed_company_count)}개 · 계약업체 {count(supplierEntry.total_company_count)}개 · 최근 12개월</p></>}
-              </div>
+          {tab === "overview" && <section className={`relative mt-8 transition-opacity ${isUpdating ? "opacity-60" : "opacity-100"}`} aria-busy={isUpdating} aria-labelledby="procurement-summary-title">
+            <UpdatingOverlay show={isUpdating} label="조건 적용 중" />
+            <h2 className="text-xl font-bold" id="procurement-summary-title">발주·계약 요약</h2>
+            <p className="mt-2 text-sm text-muted-foreground">선택한 연도와 분야의 발주 및 계약 결과입니다.</p>
+            <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[["공고", `${count(activity.data?.linkage_counts?.linked)}건`], ["계약 완료", `${count(activity.data?.stage_counts?.contract)}건`], ["계약 업체", summary ? `${count(summary.company_count)}개` : "-"], ["계약금액", money(summary?.total_attributed_contract_amount)]].map(([label, value]) => <div className="rounded-xl bg-muted/50 p-4" key={label}><dt className="flex items-center gap-1 text-xs text-muted-foreground">{label}{label === "계약 업체" && <MetricHelp label="계약 업체 집계 기준"><strong className="mb-1 block text-foreground">집계 기준</strong>선택한 기간에 이 기관과 계약한 업체입니다.</MetricHelp>}</dt><dd className="mt-1 text-xl font-bold">{value}</dd></div>)}
             </dl>
+            <div className="mt-5"><h3 className="text-sm font-semibold">진행 상태</h3><div className="mt-2 flex flex-wrap gap-2">{([ ["scheduled", "예정"], ["open", "진행 중"], ["closed", "마감"], ["award", "낙찰"], ["contract", "계약"], ["failed_or_cancelled", "유찰·취소"] ] as Array<[ProcurementActivityStage, string]>).map(([value, label]) => <button className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-blue-300 hover:text-[var(--brand)]" key={value} onClick={() => openActivityStage(value)} type="button">{label} <strong className="ml-0.5 tabular-nums text-foreground">{count(activity.data?.stage_counts?.[value])}</strong></button>)}</div></div>
           </section>}
 
           {tab === "overview" && (
-            <section className={`mt-8 grid gap-10 transition-opacity lg:grid-cols-2 ${isUpdating ? "pointer-events-none opacity-55" : "opacity-100"}`} aria-busy={isUpdating}>
+            <section className={`relative mt-8 grid gap-10 transition-opacity lg:grid-cols-2 ${isUpdating ? "pointer-events-none opacity-60" : "opacity-100"}`} aria-busy={isUpdating}>
+              <UpdatingOverlay show={isUpdating} label="조건 적용 중" />
               <div className="grid gap-8 lg:col-span-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
               <div className="flex h-full flex-col">
                 <h2 className="text-xl font-bold">조달 유형</h2>
@@ -364,15 +445,15 @@ export function OrganizationDetailPage() {
                 <h2 className="text-xl font-bold">{selectedLargeCategory ? "세부 분야" : "주요 분야"}</h2>
                 <p className="mt-2 text-sm text-muted-foreground">항목을 선택하면 해당 분야만 볼 수 있습니다.</p>
                 <div className="mt-5 flex flex-1 flex-col rounded-2xl border bg-card p-5 lg:min-h-[22rem]">
-                  {selectedFieldCode && fieldDistribution.flatMap((field) => field.detailed_items ?? []).map((item) => <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/40 p-3 text-sm" key={item.code}><strong>{item.name}</strong><span className="font-mono text-xs text-muted-foreground">{item.code}</span></div>)}
-                  {!selectedFieldCode && <div className="grid flex-1 gap-3" style={{ gridTemplateRows: `repeat(${Math.max(topFields.length, 1)}, minmax(0, 1fr))` }}>{topFields.map((field) => { const max = Math.max(1, ...topFields.map((item) => item.attributed_contract_amount ?? 0)); return <button className={`grid h-full w-full grid-cols-[minmax(9rem,15rem)_1fr_auto] items-center gap-3 rounded-lg px-1 text-left text-sm hover:bg-muted/35 ${isSingleLevelField ? "cursor-default" : ""}`} key={fieldIdentity(field)} onClick={() => selectField(field)} type="button"><span className="flex min-w-0 items-center gap-2">{field.work_types?.map((workType) => <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${workTypeStyle[workType] ?? workTypeStyle.unknown}`} key={workType}>{workTypeLabel[workType] ?? workType}</span>)}<span className="truncate font-medium hover:text-violet-700">{field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"}</span></span><span className="h-2.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((field.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong className="min-w-24 text-right">{money(field.attributed_contract_amount)}</strong></button>; })}</div>}
+                  {selectedFieldCode && <div className="grid flex-1 gap-3" style={{ gridTemplateRows: `repeat(${Math.max(fieldDistribution.length, 1)}, minmax(0, 1fr))` }}>{fieldDistribution.map((field) => { const max = Math.max(1, ...fieldDistribution.map((item) => item.attributed_contract_amount ?? 0)); return <div className="grid h-full w-full grid-cols-[minmax(9rem,15rem)_1fr_auto] items-center gap-3 rounded-lg px-1 text-sm" key={fieldIdentity(field)}><span className="flex min-w-0 items-center gap-2">{field.work_types?.map((workType) => <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${workTypeStyle[workType] ?? workTypeStyle.unknown}`} key={workType}>{workTypeLabel[workType] ?? workType}</span>)}<span className="truncate font-medium">{field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"}</span></span><span className="h-2.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((field.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong className="min-w-24 text-right">{money(field.attributed_contract_amount)}</strong></div>; })}</div>}
+                  {!selectedFieldCode && <div className="grid flex-1 gap-3" style={{ gridTemplateRows: `repeat(${Math.max(topFields.length, 1)}, minmax(0, 1fr))` }}>{topFields.map((field) => { const max = Math.max(1, ...topFields.map((item) => item.attributed_contract_amount ?? 0)); return <button className={`grid h-full w-full grid-cols-[minmax(9rem,15rem)_1fr_auto] items-center gap-3 rounded-lg px-1 text-left text-sm hover:bg-muted/35 ${isSingleLevelField ? "cursor-default" : ""}`} key={fieldIdentity(field)} onClick={() => selectField(field)} type="button"><span className="flex min-w-0 items-center gap-2">{field.work_types?.map((workType) => <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${workTypeStyle[workType] ?? workTypeStyle.unknown}`} key={workType}>{workTypeLabel[workType] ?? workType}</span>)}<span className="truncate font-medium hover:text-blue-800 dark:hover:text-blue-400">{field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"}</span></span><span className="h-2.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((field.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong className="min-w-24 text-right">{money(field.attributed_contract_amount)}</strong></button>; })}</div>}
                   {!topFields.length && <p className="py-5 text-center text-sm text-muted-foreground">선택한 조건에서 분류된 조달 분야가 없습니다.</p>}
                   {!selectedFieldCode && rankedFields.length > 5 && <div className="mt-4 border-t pt-4 text-right"><Button size="sm" variant="ghost" onClick={() => setShowAllFields(true)}>전체 {count(rankedFields.length)}개 보기</Button></div>}
                 </div>
               </div>
               </div>
 
-              {showAllFields && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="전체 조달 분야" onClick={() => setShowAllFields(false)}><div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-2xl border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-lg font-bold">전체 {selectedLargeCategory ? "세부 분야" : "분야"}</h2><p className="mt-1 text-xs text-muted-foreground">계약금액이 큰 순서입니다.</p></div><Button size="icon" variant="ghost" aria-label="닫기" onClick={() => setShowAllFields(false)}><X className="size-4" /></Button></div><div className="max-h-[calc(80vh-5rem)] space-y-3 overflow-y-auto p-5">{rankedFields.map((field) => { const max = Math.max(1, rankedFields[0]?.attributed_contract_amount ?? 0); return <button className="grid w-full grid-cols-[minmax(9rem,15rem)_1fr_auto] items-center gap-3 text-left text-sm" key={fieldIdentity(field)} onClick={() => { selectField(field); setShowAllFields(false); }} type="button"><span className="flex min-w-0 items-center gap-2">{field.work_types?.map((workType) => <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${workTypeStyle[workType] ?? workTypeStyle.unknown}`} key={workType}>{workTypeLabel[workType] ?? workType}</span>)}<span className="truncate font-medium hover:text-violet-700">{field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"}</span></span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((field.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong className="min-w-24 text-right">{money(field.attributed_contract_amount)}</strong></button>; })}</div></div></div>}
+              {showAllFields && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="전체 조달 분야" onClick={() => setShowAllFields(false)}><div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-2xl border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 className="text-lg font-bold">전체 {selectedLargeCategory ? "세부 분야" : "분야"}</h2><p className="mt-1 text-xs text-muted-foreground">계약금액이 큰 순서입니다.</p></div><Button size="icon" variant="ghost" aria-label="닫기" onClick={() => setShowAllFields(false)}><X className="size-4" /></Button></div><div className="max-h-[calc(80vh-5rem)] space-y-3 overflow-y-auto p-5">{rankedFields.map((field) => { const max = Math.max(1, rankedFields[0]?.attributed_contract_amount ?? 0); return <button className="grid w-full grid-cols-[minmax(9rem,15rem)_1fr_auto] items-center gap-3 text-left text-sm" key={fieldIdentity(field)} onClick={() => { selectField(field); setShowAllFields(false); }} type="button"><span className="flex min-w-0 items-center gap-2">{field.work_types?.map((workType) => <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${workTypeStyle[workType] ?? workTypeStyle.unknown}`} key={workType}>{workTypeLabel[workType] ?? workType}</span>)}<span className="truncate font-medium hover:text-blue-800 dark:hover:text-blue-400">{field.field_name ?? field.middle_category ?? field.large_category ?? "미분류"}</span></span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((field.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong className="min-w-24 text-right">{money(field.attributed_contract_amount)}</strong></button>; })}</div></div></div>}
 
               <div className="lg:col-span-2">
                 <h2 className="text-xl font-bold">계약 추이</h2>
@@ -397,15 +478,21 @@ export function OrganizationDetailPage() {
 
               <div className="lg:col-span-2">
                 <div>
-                  <h2 className="text-xl font-bold">주요 업체</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">업체를 선택하면 이 기관과의 계약 관계를 확인할 수 있습니다.</p>
+                  <h2 className="text-xl font-bold">업체 현황</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">계약 업체의 진입 현황과 주요 거래 업체를 보여줍니다.</p>
                 </div>
+                <div className="mt-5 rounded-2xl border bg-card p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="flex items-center gap-1 text-xs text-muted-foreground">최근 12개월 신규 업체 비중<MetricHelp label="신규 업체 비중 계산 기준"><strong className="mb-1 block text-foreground">계산 기준</strong>선택한 종료 연도를 기준으로 최근 12개월 계약 업체 중 이전 계약 이력이 확인되지 않은 업체의 비율입니다.<span className="mt-2 block space-y-0.5 text-[11px] text-muted-foreground"><span className="block">대상 기간 {supplierEntry?.period_from && supplierEntry?.period_to ? `${supplierEntry.period_from.replaceAll("-", ".")}–${supplierEntry.period_to.replaceAll("-", ".")}` : "최근 12개월"}</span>{supplierEntry?.history_from && <span className="block">이전 계약 확인 범위 {supplierEntry.history_from.slice(0, 4)}년부터 5개 회계연도</span>}</span></MetricHelp></p><strong className="mt-1 block text-2xl">{supplierEntry ? `${(supplierEntry.first_observed_company_rate * 100).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%` : "데이터 없음"}</strong></div>{supplierEntry && <p className="text-xs text-muted-foreground">신규 {count(supplierEntry.first_observed_company_count)}개 · 계약 업체 {count(supplierEntry.total_company_count)}개</p>}</div>
+                  {supplierEntry && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${Math.min(100, Math.max(0, supplierEntry.first_observed_company_rate * 100))}%` }} /></div>}
+                </div>
+                <h3 className="mt-7 font-bold">주요 업체</h3>
+                <p className="mt-1 text-sm text-muted-foreground">업체를 선택하면 이 기관과의 계약 관계를 확인할 수 있습니다.</p>
                 <div className="mt-5 space-y-3 rounded-2xl border bg-card p-5">
                   {companyRelationships.slice(0, 10).map((company) => {
                     const max = Math.max(1, ...(companyRelationships.slice(0, 10).map((item) => item.total_attributed_contract_amount ?? 0)));
                     return (
                       <button className="grid w-full grid-cols-[minmax(8rem,13rem)_1fr_auto] items-center gap-3 text-left text-sm" key={company.company_number} onClick={() => selectCompany(company.company_number ?? "")} type="button">
-                        <span className="truncate font-medium hover:text-violet-700">{company.company_name}</span>
+                        <span className="truncate font-medium hover:text-blue-800 dark:hover:text-blue-400">{company.company_name}</span>
                         <span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((company.total_attributed_contract_amount ?? 0) / max) * 100}%` }} /></span>
                         <strong className="min-w-24 text-right tabular-nums">{money(company.total_attributed_contract_amount)}</strong>
                       </button>
@@ -413,7 +500,7 @@ export function OrganizationDetailPage() {
                   })}
                 </div>
                 {selectedCompany && (
-                  <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/40 p-5 dark:border-violet-900 dark:bg-violet-950/15">
+                  <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/40 p-5 dark:border-blue-900 dark:bg-blue-950/15">
                     <strong className="text-lg">{selectedCompany.company_name} × {organization?.name}</strong>
                     <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       {[["계약", `${count(selectedCompany.contract_event_count)}건`], ["계약금액", money(selectedCompany.total_attributed_contract_amount)], ["계약 이력", `${count(selectedCompany.active_year_count)}개 연도`], ["최근 계약", selectedCompany.latest_activity_date?.slice(0, 7) ?? "-"]].map(([label, value]) => <div className="rounded-xl bg-background/80 p-3" key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-bold">{value}</dd></div>)}
@@ -428,24 +515,27 @@ export function OrganizationDetailPage() {
               <div className="lg:col-span-2">
                 <div>
                   <h2 className="mt-2 text-xl font-bold">최근 공고</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">공고를 클릭하면 상세 내용을 볼 수 있습니다.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">공고 탭의 최신 조달 활동 5건입니다.</p>
                 </div>
                 <div className="mt-5 divide-y overflow-hidden rounded-2xl border bg-card">
-                  {notices.slice(0, 5).map((notice) => {
-                    const status = noticeStatus[notice.status] ?? noticeStatus.unknown;
-                    return (
-                    <Link
-                      className="group flex items-start gap-3 p-4 hover:bg-blue-50/35 dark:hover:bg-blue-950/10"
-                      key={notice.id}
-                      to={`/notices/${encodeURIComponent(notice.id)}`}
-                    >
-                      <FileText className="mt-0.5 size-4 shrink-0 text-blue-700" />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2"><strong className="min-w-0 flex-1 truncate text-sm group-hover:text-blue-700">{notice.name}</strong><Badge className={`shrink-0 border-0 text-[10px] ${status.className}`}>{status.label}</Badge></span>
-                        <small className="mt-1 flex flex-wrap justify-between gap-2 text-muted-foreground"><span>{notice.notice_number}-{notice.notice_order}</span><span>{notice.published_at?.slice(0, 10) ?? ""}</span></small>
+                  {(activity.data?.items ?? []).slice(0, 5).map((item) => {
+                    const styleKey = item.stage === "award" ? "awarded" : item.stage === "contract" ? "contracted" : item.stage === "failed_or_cancelled" ? "cancelled" : item.stage;
+                    const status = noticeStatus[styleKey] ?? noticeStatus.unknown;
+                    const projectAmount = item.project_amount ?? item.notice?.display_amount ?? item.notice?.allocated_budget ?? item.notice?.estimated_price ?? item.notice?.base_amount;
+                    const content = <>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Badge className={`shrink-0 border-0 text-[10px] ${status.className}`}>{item.stage_name ?? status.label}</Badge>
+                        <strong className="min-w-0 flex-1 truncate text-sm" title={item.notice_name}>{item.notice_name ?? "공고명 미상"}</strong>
+                        {item.notice_linkage === "unlinked" && <span className="shrink-0 text-[11px] text-muted-foreground">공고 미연결</span>}
                       </span>
-                    </Link>
-                    );
+                      <div className="mt-1.5 flex min-w-0 items-center gap-2 overflow-hidden text-sm text-muted-foreground">
+                        <span className="max-w-52 shrink truncate" title={item.organization_name ?? organization?.name}>{item.organization_name ?? organization?.name}</span>
+                        <span>·</span><span className="shrink-0">{(item.notice?.published_at ?? item.latest_activity_date)?.slice(0, 10) ?? "일자 미상"}</span>
+                        {item.work_type && <><span>·</span><span className="shrink-0">{workTypeLabel[item.work_type] ?? item.work_type}</span></>}
+                        {projectAmount != null && <><span>·</span><span className="shrink-0 font-medium tabular-nums text-foreground">{money(projectAmount)}</span></>}
+                      </div>
+                    </>;
+                    return item.bid_notice_id ? <Link className="group block cursor-pointer p-4 transition-colors hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-700 dark:hover:bg-blue-950/20" key={item.activity_id} to={`/notices/${encodeURIComponent(item.bid_notice_id)}`}>{content}</Link> : <div className="p-4" key={item.activity_id}>{content}</div>;
                   })}
                 </div>
                 <div className="mt-3 flex justify-end"><Button size="sm" variant="ghost" onClick={() => setTab("notices")}>전체 공고 보기 <ArrowUpRight className="ml-1 size-4" /></Button></div>
@@ -454,66 +544,63 @@ export function OrganizationDetailPage() {
           )}
 
           {tab === "companies" && (
-            <section className="mt-8">
-              <div>
-                <p className="text-xs font-semibold text-violet-700">기관 × 업체</p>
-                <h2 className="mt-2 text-xl font-bold">업체별 거래 분석</h2>
-                <p className="mt-2 text-sm text-muted-foreground">이 기관과 거래한 업체를 선택해 {periodLabel}의 관계를 확인합니다.</p>
-              </div>
-              <div className="relative mt-5 max-w-xl">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="pl-9" value={companySearch} onChange={(event) => setCompanySearch(event.target.value)} placeholder="업체명 검색" />
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {filteredCompanies.slice(0, 12).map((company) => (
-                  <button className={`rounded-full px-3 py-1.5 text-xs font-medium ${company.company_number === selectedCompanyNumber ? "bg-violet-700 text-white" : "bg-muted hover:bg-violet-100 hover:text-violet-800"}`} key={company.company_number} onClick={() => selectCompany(company.company_number ?? "", "companies")} type="button">
-                    {company.company_name}
-                  </button>
-                ))}
+            <section className={`relative mt-8 transition-opacity ${procurement.isFetching || companyRelationship.isFetching ? "opacity-60" : "opacity-100"}`} aria-busy={procurement.isFetching || companyRelationship.isFetching}>
+              <UpdatingOverlay show={(procurement.isFetching && Boolean(procurement.data)) || (companyRelationship.isFetching && Boolean(companyRelationship.data))} />
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">계약 업체 조회</h2>
+                <p className="mt-2 text-sm text-muted-foreground">이 기관과 계약한 업체를 선택해 {periodLabel}의 거래 관계를 확인합니다.</p>
               </div>
 
-              {!selectedCompany && (
-                <p className="mt-8 rounded-2xl border bg-muted/25 p-8 text-center text-sm text-muted-foreground">분석할 업체를 선택해 주세요.</p>
-              )}
+              <form className="flex w-full max-w-xl gap-2" onSubmit={submitCompanySearch}><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9 pr-9" disabled={procurement.isFetching} value={companySearch} onChange={(event) => setCompanySearch(event.target.value)} placeholder="업체명 검색" />{companySearch && <button aria-label="업체 검색 초기화" className="absolute right-3 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground" onClick={clearCompanySearch} type="button"><X className="size-4" /></button>}</div><Button disabled={procurement.isFetching} type="submit">검색</Button></form>
 
-              {selectedCompany && (
-                <div className="mt-8 space-y-10">
-                  <section className="rounded-2xl border bg-card p-6">
+              <div className="mt-4">
+                <div className="flex flex-wrap gap-2">
+                  {filteredCompanies.slice(0, companyQuery ? 20 : 12).map((company) => <button aria-pressed={company.company_number === selectedCompanyNumber} className={`rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${company.company_number === selectedCompanyNumber ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "bg-background text-foreground hover:border-blue-300 hover:text-[var(--brand)]"}`} key={company.company_number} onClick={() => selectCompany(company.company_number ?? "", "companies")} title={`${company.company_name} · ${money(company.total_attributed_contract_amount)}`} type="button">{company.company_name}</button>)}
+                  {!filteredCompanies.length && <p className="py-2 text-sm text-muted-foreground">검색 결과가 없습니다.</p>}
+                </div>
+              </div>
+
+              {!selectedCompany && <div className="mt-8 rounded-2xl border bg-muted/20 p-8 text-center text-sm text-muted-foreground">주요 업체를 선택하거나 업체명을 검색해 거래 관계를 확인해 주세요.</div>}
+
+                {selectedCompany && (
+                <div className="mt-8 space-y-8">
+                  <section className="rounded-2xl border bg-card p-5 sm:p-6">
+                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">기관 × 업체</p>
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm text-muted-foreground">{organization?.name}</p>
-                        <span className="my-1 block text-muted-foreground">×</span>
-                        <h3 className="text-2xl font-bold">{selectedCompany.company_name}</h3>
+                        <h3 className="mt-2 text-xl font-bold sm:text-2xl">{organization?.name} × {selectedCompany.company_name}</h3>
+                        <p className="mt-2 text-sm text-muted-foreground">{periodLabel} · 선택한 조달 조건 기준</p>
                       </div>
                       <Button asChild size="sm" variant="outline"><Link to={`/companies/${encodeURIComponent(selectedCompany.company_number ?? "")}?name=${encodeURIComponent(selectedCompany.company_name ?? "업체")}`}>업체 프로필</Link></Button>
                     </div>
-                    <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <dl className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
                       {[
                         ["계약", `${count(selectedCompany.contract_event_count)}건`],
                         ["계약금액", money(selectedCompany.total_attributed_contract_amount)],
-                        ["계약 이력", `${count(selectedCompany.active_year_count)}개 연도`],
-                        ["최근 계약", selectedCompany.latest_activity_date?.slice(0, 7) ?? "-"],
+                        ["계약 이력", `${count((selectedCompany.yearly_activity ?? []).filter((item) => item.contract_event_count > 0).length)}개 연도`],
+                        ["최근 계약", (selectedCompany.latest_contract_date ?? selectedCompany.latest_activity_date)?.slice(0, 10) ?? "-"],
                       ].map(([label, value]) => <div className="rounded-xl bg-muted/50 p-3" key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-bold">{value}</dd></div>)}
                     </dl>
                   </section>
 
-                  <section className="grid gap-8 lg:grid-cols-2">
+                  <section className="grid gap-8 xl:grid-cols-2">
                     <div>
                       <h3 className="font-bold">거래 추이</h3>
                       <div className="mt-3 space-y-3 rounded-2xl border bg-card p-5">
-                        {[...(selectedCompany.yearly_activity ?? [])].sort((a, b) => a.year - b.year).map((item) => {
+                        {Array.from({ length: fiscalEndYear - fiscalStartYear + 1 }, (_, index) => fiscalStartYear + index).map((year) => {
                           const rows = selectedCompany.yearly_activity ?? [];
+                          const item = rows.find((row) => row.year === year) ?? { year, contract_event_count: 0, attributed_contract_amount: 0 };
                           const max = Math.max(1, ...rows.map((row) => row.attributed_contract_amount ?? 0));
-                          return <div className="grid grid-cols-[3rem_1fr_auto_auto] items-center gap-3 text-sm" key={item.year}><span className="text-muted-foreground">{item.year}</span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((item.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><strong>{money(item.attributed_contract_amount)}</strong><span className="text-xs text-muted-foreground">{count(item.contract_event_count)}건</span></div>;
+                          return <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 text-sm sm:gap-3" key={item.year}><span className="text-muted-foreground">{item.year}</span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${((item.attributed_contract_amount ?? 0) / max) * 100}%` }} /></span><span className="text-right"><strong className="block">{money(item.attributed_contract_amount)}</strong><span className="text-xs text-muted-foreground">계약 {count(item.contract_event_count)}건</span></span></div>;
                         })}
                       </div>
                     </div>
                     <div>
-                      <h3 className="font-bold">거래 분야</h3>
+                      <h3 className="font-bold">주요 거래 분야</h3>
                       <div className="mt-3 space-y-3 rounded-2xl border bg-card p-5">
                         {(selectedCompany.major_fields ?? []).map((field) => {
-                          const max = Math.max(1, ...(selectedCompany.major_fields ?? []).map((item) => item.event_count));
-                          return <div className="grid grid-cols-[minmax(7rem,1fr)_2fr_auto] items-center gap-3 text-sm" key={field.code}><span className="truncate">{field.name}</span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${(field.event_count / max) * 100}%` }} /></span><strong>{count(field.event_count)}건</strong></div>;
+                          const max = Math.max(1, ...(selectedCompany.major_fields ?? []).map((item) => item.amount ?? 0));
+                          return <div className="grid grid-cols-[minmax(7rem,1fr)_2fr_auto] items-center gap-3 text-sm" key={field.code}><span className="truncate">{field.name}</span><span className="h-2 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-blue-800 dark:bg-blue-500" style={{ width: `${field.amount != null ? (field.amount / max) * 100 : 0}%` }} /></span><strong>{field.amount != null ? money(field.amount) : `관련 이력 ${count(field.event_count)}건`}</strong></div>;
                         })}
                         {!selectedCompany.major_fields?.length && <p className="text-sm text-muted-foreground">분류된 거래 분야가 없습니다.</p>}
                       </div>
@@ -521,109 +608,75 @@ export function OrganizationDetailPage() {
                   </section>
 
                   <section>
-                    <h3 className="font-bold">공고에 연결된 수주 이력</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">전체 계약 {count(selectedCompany.contract_event_count)}건 중 공고 연결이 확인된 {count(visibleRelationshipEvents.length)}건입니다. 공고번호가 연결되지 않은 계약은 이 목록에 포함되지 않습니다.</p>
-                    <div className="mt-3 overflow-x-auto rounded-2xl border bg-card">
-                      <table className="w-full min-w-[760px] text-sm">
-                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3">공고</th><th className="px-3 py-3">유형</th><th className="px-3 py-3 text-right">낙찰금액</th><th className="px-3 py-3 text-right">계약금액</th><th className="px-4 py-3 text-right">일자</th></tr></thead>
+                    <h3 className="font-bold">관련 공고 <span className="ml-1 text-sm font-normal text-muted-foreground">{count(visibleRelationshipEvents.length)}건</span></h3>
+                    <div className="mt-3 divide-y overflow-hidden rounded-2xl border bg-card md:hidden">
+                      {visibleRelationshipEvents.map((event) => { const first = (event.first_contract_date ?? event.contract_date)?.slice(0, 10); const latest = event.latest_contract_version_date?.slice(0, 10) ?? first; const changed = Boolean(first && latest && first !== latest); return <Link className="block p-4 transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-950/20" key={event.award_event_id} to={`/notices/${encodeURIComponent(event.bid_notice_id)}`}><strong className="line-clamp-2 text-sm">{event.notice_name ?? event.bid_notice_id}</strong><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><div><dt className="text-muted-foreground">계약금액</dt><dd className="mt-1 font-semibold">{money(event.attributed_contract_amount ?? event.contract_amount)}</dd></div><div className="text-right"><dt className="text-muted-foreground">{changed ? "최근 변경일" : "계약일"}</dt><dd className="mt-1 font-semibold">{latest ?? "-"}</dd>{changed && <span className="mt-0.5 block text-[11px] text-muted-foreground">최초 계약 {first}</span>}</div></dl></Link>; })}
+                      {!visibleRelationshipEvents.length && <p className="p-8 text-center text-sm text-muted-foreground">관련 공고가 없습니다.</p>}
+                    </div>
+                    <div className="mt-3 hidden overflow-x-auto rounded-2xl border bg-card md:block">
+                      <table className="w-full min-w-[620px] text-sm">
+                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3">공고</th><th className="px-3 py-3 text-right">계약금액</th><th className="px-4 py-3 text-right">계약일</th></tr></thead>
                         <tbody className="divide-y">
-                          {visibleRelationshipEvents.map((event) => <tr key={event.award_event_id}><td className="px-4 py-3"><Link className="font-medium hover:text-blue-700 hover:underline" to={`/notices/${encodeURIComponent(event.bid_notice_id)}`}>{event.notice_name ?? event.bid_notice_id}</Link></td><td className="px-3 py-3 text-muted-foreground">{event.project_type_label ?? event.project_type ?? "-"}</td><td className="px-3 py-3 text-right">{money(event.award_amount)}</td><td className="px-3 py-3 text-right">{money(event.attributed_contract_amount ?? event.contract_amount)}</td><td className="px-4 py-3 text-right text-muted-foreground">{(event.contract_date ?? event.award_date ?? event.notice_published_date)?.slice(0, 10) ?? "-"}</td></tr>)}
+                          {visibleRelationshipEvents.map((event) => { const first = (event.first_contract_date ?? event.contract_date)?.slice(0, 10); const latest = event.latest_contract_version_date?.slice(0, 10) ?? first; const changed = Boolean(first && latest && first !== latest); return <tr key={event.award_event_id}><td className="px-4 py-3"><Link className="font-medium hover:text-blue-700" to={`/notices/${encodeURIComponent(event.bid_notice_id)}`}>{event.notice_name ?? event.bid_notice_id}</Link></td><td className="px-3 py-3 text-right font-medium">{money(event.attributed_contract_amount ?? event.contract_amount)}</td><td className="px-4 py-3 text-right"><span className="block text-muted-foreground">{latest ?? "-"}</span>{changed && <span className="mt-0.5 block text-[11px] text-muted-foreground">최초 계약 {first}</span>}</td></tr>; })}
+                          {!visibleRelationshipEvents.length && <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={3}>관련 공고가 없습니다.</td></tr>}
                         </tbody>
                       </table>
                     </div>
                   </section>
                 </div>
-              )}
+                )}
             </section>
           )}
 
           {tab === "notices" && (
-            <section className="mt-6">
-              <div className="divide-y rounded-xl border">
-                {notices.map((notice) => (
-                  <Link
-                    className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50"
-                    key={notice.id}
-                    to={`/notices/${encodeURIComponent(notice.id)}`}
-                  >
-                    <span className="min-w-0">
-                      <strong className="block truncate">{notice.name}</strong>
-                      <small className="mt-1 block text-muted-foreground">
-                        {notice.notice_number}-{notice.notice_order}
-                      </small>
-                    </span>
-                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
-                  </Link>
-                ))}
+            <section className={`relative mt-8 transition-opacity ${activity.isFetching ? "opacity-60" : "opacity-100"}`} aria-busy={activity.isFetching}>
+              <UpdatingOverlay show={activity.isFetching && Boolean(activity.data)} />
+              <div className="mb-5">
+                <h2 className="text-xl font-bold">공고 조회</h2>
+                <p className="mt-2 text-sm text-muted-foreground">이 기관의 발주부터 낙찰·계약까지 {periodLabel}의 전체 조달 이력을 확인합니다.</p>
               </div>
-            </section>
-          )}
-          {tab === "awards" && (
-            <section className="mt-6">
+              <form className="mb-3 flex max-w-xl gap-2" onSubmit={submitListSearch}><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9 pr-9" disabled={activity.isFetching} onChange={(event) => setListSearch(event.target.value)} placeholder="공고명·업체명 검색" value={listSearch} />{listSearch && <button aria-label="검색 초기화" className="absolute right-3 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground" onClick={clearListSearch} type="button"><X className="size-4" /></button>}</div><Button disabled={activity.isFetching} type="submit">검색</Button></form>
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="공고 상태 필터">{([
+                ["all", "전체"], ["scheduled", "예정"], ["open", "진행 중"], ["closed", "마감"], ["award", "낙찰"], ["contract", "계약"], ["failed_or_cancelled", "유찰·취소"],
+              ] as Array<[ProcurementActivityStage, string]>).map(([value, label]) => <button className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${activityStage === value ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "bg-background text-muted-foreground hover:border-blue-300 hover:text-[var(--brand)]"}`} disabled={activity.isFetching} key={value} onClick={() => setActivityStage(value)} type="button">{label} <span className={activityStage === value ? "text-blue-100" : "text-muted-foreground"}>{count(activity.data?.stage_counts?.[value])}</span></button>)}</div>
               {activity.isLoading && <Skeleton className="h-48 rounded-xl" />}
-              {activity.isError && <p className="rounded-xl border p-5 text-sm text-muted-foreground">낙찰 정보를 불러오지 못했습니다.</p>}
-              <div className="divide-y rounded-xl border">
-                {(activity.data?.awards ?? []).map((item) => (
-                  <div className="flex items-center justify-between gap-5 p-4" key={item.id}>
-                    <div className="min-w-0">
-                      <Link
-                        className="font-semibold hover:text-blue-800 hover:underline"
-                        to={`/companies/${item.company_number}`}
-                      >
-                        {item.company_name}
-                      </Link>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        <Link
-                          className="hover:underline"
-                          to={`/notices/${encodeURIComponent(item.bid_notice_id ?? "")}`}
-                        >
-                          {item.notice_name}
-                        </Link>{" "}
-                        · {money(item.winning_amount)}
-                      </p>
+              {activity.isError && <p className="rounded-xl border p-5 text-sm text-muted-foreground">공고 정보를 불러오지 못했습니다.</p>}
+              <div className="overflow-hidden rounded-xl border">
+                {(activity.data?.items ?? []).map((item) => {
+                  const award = item.award;
+                  const contract = item.contract;
+                  const lead = contract?.lead_contractor ?? contract?.contractors?.[0];
+                  const contractCompanies = contract?.contractors?.length ? contract.contractors : lead ? [lead] : [];
+                  const additionalCount = Math.max(0, (contract?.contractor_count ?? contract?.contractors?.length ?? 0) - 1);
+                  const contractCompany = lead?.company_name ? `${lead.company_name}${additionalCount ? ` 외 ${additionalCount}개 업체` : ""}` : "계약 업체 미상";
+                  const styleKey = item.stage === "award" ? "awarded" : item.stage === "contract" ? "contracted" : item.stage === "failed_or_cancelled" ? "cancelled" : item.stage;
+                  const status = noticeStatus[styleKey] ?? noticeStatus.unknown;
+                  const projectAmount = item.project_amount ?? item.notice?.display_amount ?? item.notice?.allocated_budget ?? item.notice?.estimated_price ?? item.notice?.base_amount;
+                  const projectAmountBasis = item.project_amount_basis_name ?? item.notice?.display_amount_basis_name;
+                  const noticeDetail = item.stage === "scheduled"
+                    ? { label: "입찰 시작 전", dateLabel: "마감", date: item.notice?.deadline_at }
+                    : item.stage === "open"
+                      ? { label: "입찰 진행 중", dateLabel: "마감", date: item.notice?.deadline_at }
+                      : item.stage === "failed_or_cancelled"
+                        ? { label: "유찰·취소", dateLabel: "처리일", date: item.latest_activity_date }
+                        : { label: "입찰 마감", dateLabel: "마감", date: item.notice?.deadline_at };
+                  return <article className="grid border-b transition-colors last:border-b-0 hover:bg-blue-50/60 dark:hover:bg-blue-950/20 md:grid-cols-[minmax(0,1.85fr)_minmax(19rem,1fr)]" key={item.activity_id}>
+                    <div className="min-w-0 p-4">
+                      <div className="flex min-w-0 items-start gap-2"><Badge className={`mt-0.5 shrink-0 border-0 text-[10px] ${status.className}`}>{item.stage_name ?? status.label}</Badge>{item.bid_notice_id ? <Link className="activity-notice-link line-clamp-2 min-w-0 flex-1 rounded-sm text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 md:line-clamp-1" title={item.notice_name} to={`/notices/${encodeURIComponent(item.bid_notice_id)}`}>{item.notice_name ?? "공고명 미상"}</Link> : <strong className="line-clamp-2 min-w-0 flex-1 text-sm md:line-clamp-1" title={item.notice_name}>{item.notice_name ?? "계약명 미상"}</strong>}{item.notice_linkage === "unlinked" && <span className="shrink-0 text-[11px] text-muted-foreground">공고 미연결</span>}</div>
+                      <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"><span className="truncate">{item.organization_name ?? organization?.name}</span><span>·</span><span className="shrink-0">{(item.notice?.published_at ?? item.latest_activity_date)?.slice(0, 10) ?? "일자 미상"}</span>{item.work_type && <><span>·</span><span>{workTypeLabel[item.work_type] ?? item.work_type}</span></>}{projectAmount != null && <><span>·</span><span className="shrink-0 font-medium tabular-nums text-foreground" title={projectAmountBasis}>{money(projectAmount)}</span></>}</p>
                     </div>
-                    <Badge className="border-0" variant="secondary">
-                      {item.award_date ?? "낙찰"}
-                    </Badge>
-                  </div>
-                ))}
+                    <div className="flex min-w-0 items-center justify-between gap-3 border-t bg-muted/[0.12] px-4 py-3 md:border-l md:border-t-0">
+                      {(award || contract) ? <><div className="min-w-0">{contract ? <ContractCompanyPicker companies={contractCompanies} label={contractCompany} /> : award?.winner_business_registration_number ? <Link className="activity-company-link block truncate text-sm font-semibold" to={`/companies/${encodeURIComponent(award.winner_business_registration_number)}`}>{award.winner_name ?? "업체명 미상"}</Link> : <span className="block truncate text-sm font-medium">{award?.winner_name ?? "업체명 미상"}</span>}<span className="mt-0.5 block text-[11px] text-muted-foreground">{contract ? "계약 업체" : "낙찰 업체"}</span></div><span className="shrink-0 text-right"><strong className="block text-sm tabular-nums">{money(contract?.contract_amount ?? award?.winning_amount)}</strong><span className="text-[11px] text-muted-foreground">{contract?.contract_date ?? award?.award_date ?? "일자 미상"}</span></span></> : <><strong className="min-w-0 truncate text-sm">{noticeDetail.label}</strong><span className="shrink-0 text-right"><span className="block text-[11px] text-muted-foreground">{noticeDetail.dateLabel}</span><strong className="block text-sm tabular-nums">{noticeDetail.date?.slice(0, 10) ?? "일자 미상"}</strong></span></>}
+                    </div>
+                  </article>;
+                })}
+                {!activity.isLoading && (activity.data?.items ?? []).length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">선택한 조건에 해당하는 공고가 없습니다.</p>}
               </div>
+              <ListPagination loading={activity.isFetching} page={listPage} totalPages={activity.data?.pagination.total_pages} onChange={setListPage} />
             </section>
           )}
-          {tab === "contracts" && (
-            <section className="mt-6">
-              {activity.isLoading && <Skeleton className="h-48 rounded-xl" />}
-              {activity.isError && <p className="rounded-xl border p-5 text-sm text-muted-foreground">계약 정보를 불러오지 못했습니다.</p>}
-              <div className="divide-y rounded-xl border">
-                {(activity.data?.contracts ?? []).map((item) => (
-                  <div className="flex items-center justify-between gap-5 p-4" key={item.id}>
-                    <div className="min-w-0">
-                      <strong className="block truncate text-sm">{item.name}</strong>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {item.concluded_date ?? "계약일 미상"} · {money(item.amount)}
-                      </p>
-                    </div>
-                    <div className="flex gap-3">
-                      {item.bid_notice_id && (
-                        <Link
-                          className="text-sm font-medium text-blue-800 hover:underline"
-                          to={`/notices/${encodeURIComponent(item.bid_notice_id)}`}
-                        >
-                          공고
-                        </Link>
-                      )}
-                      {item.detail_url && (
-                        <a href={item.detail_url} target="_blank" rel="noreferrer">
-                          <ExternalLink size={16} />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+      </>
+      </article>
     </PageContainer>
   );
 }

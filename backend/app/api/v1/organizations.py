@@ -57,17 +57,35 @@ async def get_organization_activity(
     organization_code: str,
     days: int = Query(365, ge=30, le=3650),
     period_years: int | None = Query(None, ge=1, le=5),
+    q: str | None = Query(None, max_length=200),
+    kind: str = Query("all", pattern="^(all|awards|contracts)$"),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
     field_code: str | None = Query(None, max_length=20),
+    work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
 ):
     now = datetime.now(timezone.utc)
-    start = datetime(now.year - period_years + 1, 1, 1, tzinfo=timezone.utc) if period_years else now - timedelta(days=days)
+    if (period_from_year is None) != (period_to_year is None):
+        raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
+    if period_from_year is not None and (period_from_year > period_to_year or period_to_year > now.year):
+        raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
+    start = datetime(period_from_year, 1, 1, tzinfo=timezone.utc) if period_from_year else (datetime(now.year - period_years + 1, 1, 1, tzinfo=timezone.utc) if period_years else now - timedelta(days=days))
+    end = datetime(period_to_year, 12, 31, 23, 59, 59, tzinfo=timezone.utc) if period_to_year and period_to_year < now.year else now
     shared_filters = {
+        **({"query": q} if q else {}),
+        **({"large_category": large_category} if large_category else {}),
+        **({"middle_category": middle_category} if middle_category else {}),
         **({"field_code": field_code} if field_code else {}),
+        **({"work_type": work_type} if work_type else {}),
     }
-    awards_task = teoria_client.execute("search_bid_awards", {"demand_organization_code": organization_code, "opening_at_from": start.isoformat(), "opening_at_to": now.isoformat(), "page": 1, "page_size": page_size, **shared_filters}, max_objects=page_size * 4)
-    contracts_task = teoria_client.execute("search_public_procurement_contracts", {"contracting_organization_code": organization_code, "concluded_date_from": start.date().isoformat(), "concluded_date_to": now.date().isoformat(), "page": 1, "page_size": page_size, **shared_filters}, max_objects=page_size * 3)
-    awards, contracts = await asyncio.gather(awards_task, contracts_task)
+    awards_task = teoria_client.execute("search_bid_awards", {"demand_organization_code": organization_code, "opening_at_from": start.isoformat(), "opening_at_to": end.isoformat(), "page": page, "page_size": page_size, **shared_filters}, max_objects=page_size * 4) if kind in {"all", "awards"} else None
+    contracts_task = teoria_client.execute("search_public_procurement_contracts", {"contracting_organization_code": organization_code, "concluded_date_from": start.date().isoformat(), "concluded_date_to": end.date().isoformat(), "page": page, "page_size": page_size, **shared_filters}, max_objects=page_size * 3) if kind in {"all", "contracts"} else None
+    pending = [task for task in (awards_task, contracts_task) if task is not None]
+    results = await asyncio.gather(*pending)
+    awards = results.pop(0) if awards_task is not None else {}
+    contracts = results.pop(0) if contracts_task is not None else {}
     return {"awards": [award(obj) for obj in objects_of(awards, "bid_award")], "award_pagination": awards.get("pagination", {}), "contracts": [contract(obj) for obj in objects_of(contracts, "contract")], "contract_pagination": contracts.get("pagination", {})}
 
 
@@ -75,26 +93,110 @@ async def get_organization_activity(
 async def get_organization_procurement_profile(
     organization_code: str,
     period_years: int = Query(5, ge=1, le=10),
+    period_from_year: int | None = Query(None, ge=2000),
+    period_to_year: int | None = Query(None, ge=2000),
     large_category: str | None = Query(None, max_length=200),
     middle_category: str | None = Query(None, max_length=200),
     field_code: str | None = Query(None, max_length=20),
     work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    company_query: str | None = Query(None, max_length=200),
+    sort: str = Query("contract_amount_desc", pattern="^(contract_amount_desc|contract_count_desc|latest_contract_desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
+    current_year = datetime.now(timezone.utc).year
+    if (period_from_year is None) != (period_to_year is None):
+        raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
+    if period_from_year is not None and (period_from_year > period_to_year or period_to_year > current_year):
+        raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     data = await teoria_client.execute(
         "analyze_organization_procurement_profile",
         {
             "organization_code": organization_code,
             "period_years": period_years,
-            "page": page,
-            "page_size": page_size,
+            **({"period_from_year": period_from_year, "period_to_year": period_to_year} if period_from_year is not None else {}),
             **({"large_category": large_category} if large_category else {}),
             **({"middle_category": middle_category} if middle_category else {}),
             **({"field_code": field_code} if field_code else {}),
             **({"work_type": work_type} if work_type else {}),
+            **({"company_query": company_query} if company_query else {}),
+            "sort": sort,
+            "page": page,
+            "page_size": page_size,
         },
         max_objects=500,
+    )
+    return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
+
+
+@router.get("/{organization_code}/outcomes")
+async def get_organization_procurement_outcomes(
+    organization_code: str,
+    period_from_year: int = Query(..., ge=2000),
+    period_to_year: int = Query(..., ge=2000),
+    q: str | None = Query(None, max_length=200),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
+    field_code: str | None = Query(None, max_length=20),
+    work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+):
+    current_year = datetime.now(timezone.utc).year
+    if period_from_year > period_to_year or period_to_year > current_year:
+        raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
+    data = await teoria_client.execute(
+        "search_procurement_outcomes",
+        {
+            "organization_code": organization_code,
+            "period_from_year": period_from_year,
+            "period_to_year": period_to_year,
+            **({"query": q} if q else {}),
+            **({"large_category": large_category} if large_category else {}),
+            **({"middle_category": middle_category} if middle_category else {}),
+            **({"field_code": field_code} if field_code else {}),
+            **({"work_type": work_type} if work_type else {}),
+            "page": page,
+            "page_size": page_size,
+        },
+        max_objects=page_size * 3,
+    )
+    return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
+
+
+@router.get("/{organization_code}/procurement-activity")
+async def get_organization_procurement_activity(
+    organization_code: str,
+    period_from_year: int = Query(..., ge=2000),
+    period_to_year: int = Query(..., ge=2000),
+    q: str | None = Query(None, max_length=200),
+    stage: str = Query("all", pattern="^(all|scheduled|open|closed|award|contract|failed_or_cancelled)$"),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
+    field_code: str | None = Query(None, max_length=20),
+    work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+):
+    current_year = datetime.now(timezone.utc).year
+    if period_from_year > period_to_year or period_to_year > current_year:
+        raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
+    data = await teoria_client.execute(
+        "search_procurement_activity",
+        {
+            "organization_code": organization_code,
+            "period_from_year": period_from_year,
+            "period_to_year": period_to_year,
+            "stage": stage,
+            **({"query": q} if q else {}),
+            **({"large_category": large_category} if large_category else {}),
+            **({"middle_category": middle_category} if middle_category else {}),
+            **({"field_code": field_code} if field_code else {}),
+            **({"work_type": work_type} if work_type else {}),
+            "page": page,
+            "page_size": page_size,
+        },
+        max_objects=page_size * 4,
     )
     return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
 
@@ -104,10 +206,20 @@ async def get_organization_company_relationship(
     organization_code: str,
     company_number: str,
     period_years: int = Query(5, ge=1, le=5),
+    period_from_year: int | None = Query(None, ge=2000),
+    period_to_year: int | None = Query(None, ge=2000),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
     field_code: str | None = Query(None, max_length=20),
+    work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
+    current_year = datetime.now(timezone.utc).year
+    if (period_from_year is None) != (period_to_year is None):
+        raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
+    if period_from_year is not None and (period_from_year > period_to_year or period_to_year > current_year):
+        raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     number = "".join(ch for ch in company_number if ch.isdigit())
     data = await teoria_client.execute(
         "get_organization_company_relationship",
@@ -115,7 +227,11 @@ async def get_organization_company_relationship(
             "organization_code": organization_code,
             "business_registration_number": number,
             "period_years": period_years,
+            **({"period_from_year": period_from_year, "period_to_year": period_to_year} if period_from_year is not None else {}),
+            **({"large_category": large_category} if large_category else {}),
+            **({"middle_category": middle_category} if middle_category else {}),
             **({"field_code": field_code} if field_code else {}),
+            **({"work_type": work_type} if work_type else {}),
             "page": page,
             "page_size": page_size,
         },

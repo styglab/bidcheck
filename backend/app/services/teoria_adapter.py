@@ -34,7 +34,8 @@ def award(obj: dict[str, Any]) -> dict[str, Any]:
 def contract(obj: dict[str, Any]) -> dict[str, Any]:
     p = obj.get("properties", {})
     number = p.get("notice_number")
-    return {"id": p.get("unified_contract_number") or obj.get("id"), "name": p.get("contract_name"), "type": p.get("contract_type"), "notice_number": number, "bid_notice_id": f"{number}:000" if number else None, "amount": money(p.get("total_amount")), "concluded_date": p.get("concluded_date"), "contract_date": p.get("contract_date"), "period": p.get("contract_period_text"), "method": p.get("contract_method_name"), "detail_url": p.get("contract_detail_url")}
+    contractors = p.get("contractors") or []
+    return {"id": p.get("unified_contract_number") or obj.get("id"), "name": p.get("contract_name"), "type": p.get("contract_type"), "notice_number": number, "bid_notice_id": f"{number}:000" if number else None, "amount": money(p.get("total_amount")), "concluded_date": p.get("concluded_date"), "contract_date": p.get("contract_date"), "period": p.get("contract_period_text"), "method": p.get("contract_method_name"), "detail_url": p.get("contract_detail_url"), "contractors": contractors, "lead_contractor": p.get("lead_contractor") or (contractors[0] if contractors else None), "contractor_count": p.get("contractor_count"), "contractor_completeness": p.get("contractor_completeness")}
 
 
 def requirement(obj: dict[str, Any]) -> dict[str, Any]:

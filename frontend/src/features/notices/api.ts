@@ -193,6 +193,24 @@ export type ProcurementContract = {
   method?: string;
   detail_url?: string;
   organization_code?: string;
+  contractors?: Array<{
+    business_registration_number?: string;
+    company_name?: string;
+    company_role?: "sole" | "consortium_lead" | "consortium_member";
+    company_role_label?: string;
+    share_percent?: number | null;
+    share_completeness?: "complete" | "unknown" | "invalid";
+  }>;
+  lead_contractor?: {
+    business_registration_number?: string;
+    company_name?: string;
+    company_role?: "sole" | "consortium_lead" | "consortium_member";
+    company_role_label?: string;
+    share_percent?: number | null;
+    share_completeness?: "complete" | "unknown" | "invalid";
+  };
+  contractor_count?: number;
+  contractor_completeness?: string;
 };
 export function useNoticeActivity(noticeId?: string) {
   return useQuery({
@@ -504,6 +522,10 @@ export type OrganizationCompanyRelationshipResponse = {
     notice_published_date?: string;
     award_date?: string;
     contract_date?: string;
+    attribution_date?: string;
+    attribution_date_basis?: string;
+    first_contract_date?: string;
+    latest_contract_version_date?: string;
     project_type?: string;
     project_type_label?: string;
     award_amount?: number;
