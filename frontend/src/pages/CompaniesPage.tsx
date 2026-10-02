@@ -5,14 +5,10 @@ import { PageContainer } from "@/components/layout/page-container";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCompactMoney as money } from "@/shared/format/money";
 import { useCompanyDiscovery, useCompanySearch } from "../features/company-context/api";
 
 const examples = ["사무용 의자", "정보시스템 유지관리", "시설물 안전점검", "교육 기자재", "조경공사"];
-const money = (value: number) => {
-  if (value >= 100_000_000) return `${(value / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`;
-  if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
-  return `${value.toLocaleString("ko-KR")}원`;
-};
 const day = (value?: string) => value ? value.replaceAll("-", ".") : "일자 미상";
 
 export function CompaniesPage() {

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCompactMoney as money } from "@/shared/format/money";
 import {
   useNotice,
   useNoticeMarketContext,
@@ -31,13 +32,6 @@ type GraphSelection =
       sourceLabel: string;
       targetLabel: string;
     };
-
-const money = (value?: number) =>
-  value == null
-    ? "금액 미상"
-    : value >= 100_000_000
-      ? `${(value / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`
-      : `${value.toLocaleString("ko-KR")}원`;
 
 function ProcurementGraph({
   elements,

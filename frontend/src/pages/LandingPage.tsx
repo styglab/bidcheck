@@ -9,13 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCompanySearch } from "../features/company-context/api";
 import { useNotices } from "../features/notices/api";
 import { useOrganizationSearch } from "../features/organizations/api";
-
-const money = (value?: number) =>
-  value == null
-    ? "금액 미상"
-    : value >= 100_000_000
-      ? `${(value / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`
-      : `${value.toLocaleString("ko-KR")}원`;
+import { formatCompactMoney as money } from "@/shared/format/money";
 
 export function LandingPage() {
   const [params, setParams] = useSearchParams();

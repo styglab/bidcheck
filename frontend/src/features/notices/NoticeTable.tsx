@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StatusState } from "@/components/common/status-state";
+import { formatCompactMoney } from "@/shared/format/money";
 import { useNotices, type NoticeFilters } from "./api";
 
 function dday(deadline?: string) {
@@ -12,10 +13,7 @@ function dday(deadline?: string) {
   return days >= 0 ? `D-${days}` : "마감";
 }
 function price(value?: number) {
-  if (!value) return "금액 미정";
-  return value >= 100000000
-    ? `${(value / 100000000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`
-    : `${Math.round(value / 10000).toLocaleString()}만원`;
+  return value == null ? "금액 미정" : formatCompactMoney(value);
 }
 function shortDate(value?: string) {
   if (!value) return "미정";

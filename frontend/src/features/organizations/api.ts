@@ -135,6 +135,9 @@ export type ProcurementRelationship = {
   organization_code?: string;
   organization_name?: string;
   participation_count: number;
+  result_confirmed_participation_count?: number;
+  successful_participation_count?: number;
+  award_success_rate?: number | null;
   award_event_count: number;
   contract_event_count: number;
   contract_version_count?: number;
@@ -155,6 +158,7 @@ export type ProcurementRelationship = {
     amount_completeness: "complete" | "partial" | "unknown";
   }>;
   major_fields: Array<{ code: string; name: string; event_count: number; amount?: number }>;
+  major_field?: { field_code?: string; field_name?: string };
   representative_notices: Array<{
     bid_notice_id: string;
     notice_name: string;
@@ -166,6 +170,9 @@ export type ProcurementRelationship = {
 export type ProcurementProfileSummary = {
   notice_count: number;
   participation_count: number;
+  result_confirmed_participation_count?: number;
+  successful_participation_count?: number;
+  award_success_rate?: number | null;
   award_event_count: number;
   contract_event_count: number;
   contract_version_count?: number;
@@ -174,6 +181,17 @@ export type ProcurementProfileSummary = {
   organization_count: number;
   total_attributed_contract_amount?: number;
   amount_completeness: "complete" | "partial" | "unknown";
+  average_contract_amount?: number;
+  previous_period_comparison?: {
+    basis?: string;
+    current_year?: number;
+    comparison_year?: number;
+    contract_amount_change_rate?: number;
+    contract_event_count_change?: number;
+    comparable?: boolean;
+    comparison_note?: string | null;
+  };
+  supplier_entry?: SupplierEntry;
   rolling_12m_supplier_entry?: {
     window_months: number;
     period_from: string;
@@ -191,6 +209,43 @@ export type ProcurementProfileSummary = {
     minimum_sample_size: number;
     sample_sufficient: boolean;
   };
+};
+export type SupplierEntryCompany = {
+  company_number?: string;
+  company_name?: string;
+  entry_status: "first_observed" | "reentering" | "incumbent" | string;
+  entry_status_name?: string;
+  target_year_contract_count: number;
+  target_year_attributed_contract_amount?: number;
+  amount_completeness?: "complete" | "partial" | "unknown";
+  target_year_first_contract_date?: string;
+  target_year_latest_contract_date?: string;
+  first_observed_contract_date?: string;
+  previous_contract_date?: string | null;
+  reentry_contract_date?: string | null;
+};
+export type SupplierEntry = {
+  target_year: number;
+  period_from: string;
+  period_to: string;
+  lookback_from: string;
+  lookback_to: string;
+  lookback_years: number;
+  basis?: string;
+  first_observed_company_count: number;
+  reentering_company_count: number;
+  incumbent_company_count: number;
+  total_company_count: number;
+  first_observed_company_rate: number;
+  reentering_company_rate?: number;
+  entry_and_reentry_company_count?: number;
+  entry_and_reentry_rate?: number;
+  history_available_from?: string;
+  history_complete_for_lookback?: boolean;
+  history_complete_for_first_observed?: boolean;
+  minimum_sample_size?: number;
+  sample_sufficient?: boolean;
+  company_preview?: SupplierEntryCompany[];
 };
 export type OrganizationProcurementProfile = {
   organization: { code: string; name: string };
@@ -215,8 +270,14 @@ export type OrganizationProcurementProfile = {
     parent_field_code?: string;
     classification_source?: string;
     work_types?: string[];
+    display_level?: string;
+    display_code?: string;
+    display_name?: string;
+    has_children?: boolean;
+    selection_filter?: { work_type?: string | null; large_category?: string | null; middle_category?: string | null; field_code?: string | null };
     detailed_items?: Array<{ code: string; name: string; sequence?: string }>;
     event_count: number;
+    contract_event_count?: number;
     attributed_contract_amount?: number;
     amount_share?: number;
   }>;
@@ -229,6 +290,35 @@ export type OrganizationProcurementProfile = {
     contract_event_count: number;
     attributed_contract_amount?: number;
   }>;
+  notice_quarter_distribution?: Array<{ quarter: number; notice_count: number; notice_share: number }>;
+  notice_quarter_basis?: string;
+  contract_method_distribution?: Array<{
+    method: "competitive" | "direct" | "other" | "unknown" | string;
+    method_name: string;
+    contract_event_count: number;
+    attributed_contract_amount?: number;
+    contract_share: number;
+    amount_share?: number;
+  }>;
+  company_structure?: {
+    contracted_company_count: number;
+    top_5_company_amount?: number;
+    total_company_attributed_contract_amount?: number;
+    top_5_company_amount_share?: number;
+    concentration_metric?: string;
+    concentration_basis?: string;
+    concentration_computable?: boolean;
+    concentration_note?: string;
+    excluded_contract_event_count?: number;
+    small_supplier_population?: boolean;
+    hhi?: number;
+    hhi_scale?: string;
+    hhi_basis?: string;
+    multi_contract_company_count: number;
+    single_contract_company_count: number;
+    rolling_12m?: ProcurementProfileSummary["rolling_12m_supplier_entry"];
+  };
+  supplier_entry?: SupplierEntry;
   field_options?: Array<{
     field_code: string;
     field_name: string;
@@ -265,6 +355,20 @@ export function useOrganizationProcurementProfile(code?: string, periodYears = 5
     queryFn: ({ signal }) =>
       api<OrganizationProcurementProfile>(`/organizations/${encodeURIComponent(code!)}/procurement-profile?${search}`, { signal }),
     enabled: Boolean(code) && enabled,
+    staleTime: 10 * 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+export function useOrganizationSupplierEntries(code?: string, targetYear?: number, filters: ProcurementFilters = {}, enabled = true) {
+  const search = new URLSearchParams({ target_year: String(targetYear), entry_status: "first_observed", sort: "contract_amount_desc", page: "1", page_size: "5" });
+  if (filters.largeCategory) search.set("large_category", filters.largeCategory);
+  if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
+  if (filters.fieldCode) search.set("field_code", filters.fieldCode);
+  if (filters.workType) search.set("work_type", filters.workType);
+  return useQuery({
+    queryKey: ["organization-supplier-entries", code, targetYear, filters],
+    queryFn: ({ signal }) => api<{ items: SupplierEntryCompany[]; supplier_entry?: SupplierEntry; pagination: { page: number; page_size: number; total_items: number; total_pages: number; sort?: string }; registry_version?: string }>(`/organizations/${encodeURIComponent(code!)}/supplier-entries?${search}`, { signal }),
+    enabled: Boolean(code && targetYear && enabled),
     staleTime: 10 * 60_000,
     placeholderData: (previous) => previous,
   });

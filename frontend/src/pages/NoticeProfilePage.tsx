@@ -7,18 +7,14 @@ import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCompactMoney } from "@/shared/format/money";
 import {
   useNotice,
   useNoticeActivity,
   useBidRelationshipContext,
 } from "../features/notices/api";
 
-const money = (value?: number) =>
-  value == null
-    ? "-"
-    : value >= 100_000_000
-      ? `${(value / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`
-      : `${value.toLocaleString("ko-KR")}원`;
+const money = (value?: number) => value == null ? "-" : formatCompactMoney(value);
 const workType = (value?: string) =>
   ({ service: "용역", goods: "물품", construction: "공사", foreign: "외자", other: "기타" })[value ?? ""] ??
   value ??

@@ -8,56 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/layout/page-container";
-
-function Pagination({ filters, setPage }: { filters: NoticeFilters; setPage: (page: number) => void }) {
-  const { data } = useNotices(filters);
-  if (!data || data.pagination.total_pages <= 1) return null;
-  const { page, total_pages: total } = data.pagination;
-  const start = Math.max(1, Math.min(page - 2, total - 4));
-  const pages = Array.from({ length: Math.min(5, total) }, (_, index) => start + index);
-  return (
-    <nav className="pagination" aria-label="공고 페이지">
-      <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-        이전
-      </Button>
-      {start > 1 && (
-        <>
-          <Button variant="outline" size="sm" onClick={() => setPage(1)}>
-            1
-          </Button>
-          <span>…</span>
-        </>
-      )}
-      {pages.map((value) => (
-        <Button
-          variant={value === page ? "default" : "outline"}
-          className={
-            value === page
-              ? "border-blue-800 bg-blue-800 text-white shadow-sm hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-600"
-              : ""
-          }
-          size="sm"
-          aria-current={value === page ? "page" : undefined}
-          key={value}
-          onClick={() => setPage(value)}
-        >
-          {value}
-        </Button>
-      ))}
-      {start + pages.length - 1 < total && (
-        <>
-          <span>…</span>
-          <Button variant="outline" size="sm" onClick={() => setPage(total)}>
-            {total}
-          </Button>
-        </>
-      )}
-      <Button variant="outline" size="sm" disabled={page >= total} onClick={() => setPage(page + 1)}>
-        다음
-      </Button>
-    </nav>
-  );
-}
+import { ListPagination } from "@/components/common/list-pagination";
 
 export function NoticesPage() {
   const queryClient = useQueryClient();
@@ -223,7 +174,7 @@ export function NoticesPage() {
       <div className="page-table">
         <NoticeTable filters={filters} />
       </div>
-      <Pagination filters={filters} setPage={(page) => update({ page: String(page) })} />
+      <ListPagination label="공고 페이지" loading={noticeQuery.isFetching} page={noticeQuery.data?.pagination.page ?? filters.page ?? 1} totalPages={noticeQuery.data?.pagination.total_pages} onChange={(page) => update({ page: String(page) })} />
     </PageContainer>
   );
 }

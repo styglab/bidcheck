@@ -2,6 +2,7 @@ import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ThemeToggle } from "../features/theme/ThemeToggle";
+import { GlobalSearch } from "@/components/search/global-search";
 
 export function PublicLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -13,6 +14,7 @@ export function PublicLayout() {
         <Link className="logo" to="/" onClick={closeMenu}>
           <span>입찰</span>체크<i>beta</i>
         </Link>
+        <GlobalSearch />
         <nav className={menuOpen ? "is-open" : ""}>
           <NavLink className={location.pathname.startsWith("/explore") ? "active" : ""} to="/explore" onClick={closeMenu}>탐색</NavLink>
           <NavLink className={location.pathname.startsWith("/relations") ? "active" : ""} to="/relations" onClick={closeMenu}>관계 지도</NavLink>

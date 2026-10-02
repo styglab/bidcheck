@@ -1,5 +1,62 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+
+.app-data-table-frame {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+}
+
+.app-data-table {
+  width: 100%;
+  min-width: var(--data-table-min-width);
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.app-data-table thead {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.app-data-table th {
+  height: 2.75rem;
+  padding: 0 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.app-data-table td {
+  padding: 0.75rem 0.875rem;
+  vertical-align: middle;
+}
+
+.app-data-table tbody tr {
+  border-top: 1px solid var(--border);
+  transition: background-color 150ms ease;
+}
+
+.app-data-table tbody tr:hover {
+  background: color-mix(in oklab, var(--muted) 35%, transparent);
+}
+
+.app-data-table th.text-right,
+.app-data-table td.text-right {
+  text-align: right;
+}
+
+.app-data-table td.text-right {
+  font-variant-numeric: tabular-nums;
+}
+
+.app-data-table .app-data-table-empty {
+  height: 7rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";

@@ -57,6 +57,8 @@ async def get_organization_activity(
     organization_code: str,
     days: int = Query(365, ge=30, le=3650),
     period_years: int | None = Query(None, ge=1, le=5),
+    period_from_year: int | None = Query(None, ge=2000),
+    period_to_year: int | None = Query(None, ge=2000),
     q: str | None = Query(None, max_length=200),
     kind: str = Query("all", pattern="^(all|awards|contracts)$"),
     large_category: str | None = Query(None, max_length=200),
@@ -125,6 +127,40 @@ async def get_organization_procurement_profile(
             "page_size": page_size,
         },
         max_objects=500,
+    )
+    return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
+
+
+@router.get("/{organization_code}/supplier-entries")
+async def get_organization_supplier_entries(
+    organization_code: str,
+    target_year: int = Query(..., ge=2000),
+    entry_status: str = Query("first_observed", pattern="^(first_observed|reentering|incumbent)$"),
+    large_category: str | None = Query(None, max_length=200),
+    middle_category: str | None = Query(None, max_length=200),
+    field_code: str | None = Query(None, max_length=20),
+    work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(5, ge=1, le=100),
+):
+    current_year = datetime.now(timezone.utc).year
+    if target_year > current_year:
+        raise HTTPException(422, detail="대상 연도가 올바르지 않습니다.")
+    data = await teoria_client.execute(
+        "search_organization_supplier_entries",
+        {
+            "organization_code": organization_code,
+            "target_year": target_year,
+            "entry_status": entry_status,
+            "sort": "contract_amount_desc",
+            "page": page,
+            "page_size": page_size,
+            **({"large_category": large_category} if large_category else {}),
+            **({"middle_category": middle_category} if middle_category else {}),
+            **({"field_code": field_code} if field_code else {}),
+            **({"work_type": work_type} if work_type else {}),
+        },
+        max_objects=page_size * 2,
     )
     return {**(data.get("outcome") or {}), "registry_version": data.get("registry", {}).get("version")}
 

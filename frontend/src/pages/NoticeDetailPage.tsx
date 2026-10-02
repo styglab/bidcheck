@@ -18,14 +18,10 @@ import {
   type OrganizationFieldCompany,
 } from "../features/notices/api";
 import { useOrganizationActivity } from "../features/organizations/api";
+import { formatCompactMoney, formatExactMoney } from "@/shared/format/money";
 
-const money = (value?: number) => (value == null ? "미정" : `${value.toLocaleString("ko-KR")}원`);
-const shortMoney = (value?: number) => {
-  if (value == null) return "미정";
-  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}억원`;
-  if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
-  return money(value);
-};
+const money = (value?: number) => formatExactMoney(value, "미정");
+const shortMoney = (value?: number) => value == null ? "미정" : formatCompactMoney(value);
 const date = (value?: string) =>
   value
     ? new Intl.DateTimeFormat("ko-KR", {
