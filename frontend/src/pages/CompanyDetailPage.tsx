@@ -8,6 +8,7 @@ import { SectionError } from "@/components/common/error-state";
 import { ProcurementFilterPanel } from "@/components/procurement/procurement-filter-panel";
 import { RelationshipAnalysis } from "@/components/procurement/relationship-analysis";
 import { EntityDetailContentSkeleton, EntityDetailLayout } from "@/components/layout/entity-detail-layout";
+import { EntityDetailHeader } from "@/components/layout/entity-detail-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,18 +167,9 @@ export function CompanyDetailPage() {
 
   return (
     <EntityDetailLayout fallbackTo="/companies" filters={<ProcurementFilterPanel earliestYear={earliestYear} currentYear={currentYear} period={draftPeriod} onPeriodChange={setDraftPeriod} onPeriodCommit={setPeriod} workTypeValue={workType || "all"} workTypeOptions={[{ value: "all", label: "전체" }, ...Object.entries(workTypeLabels).map(([value, label]) => ({ value, label }))]} onWorkTypeChange={(value) => updateFilters({ workType: value === "all" ? undefined : value, large: undefined, middle: undefined, field: undefined })} fieldValue={selectedFieldValue || "all"} fieldOptions={[{ value: "all", label: "전체 분야" }, ...visibleFieldOptions]} onFieldChange={(value) => selectField(value === "all" ? "" : value)} appliedFilters={appliedProcurementFilters} onReset={() => { setDraftPeriod([Math.max(earliestYear, currentYear - 4), currentYear]); updateFilters({ fromYear: undefined, toYear: undefined, workType: undefined, large: undefined, middle: undefined, field: undefined }); }} isUpdating={(procurement.isFetching || activity.isFetching || organizationProcurement.isFetching) && Boolean(procurement.data || activity.data || organizationProcurement.data)} />}>
-      <header className="border-b pb-5">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300">
-            <Building2 className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Badge className="border-0 bg-teal-100 text-teal-800 hover:bg-teal-100 dark:bg-teal-950 dark:text-teal-200">업체</Badge><span>사업자등록번호 {businessNumber}</span></div>
-            <h1 className="mt-1.5 text-2xl font-bold tracking-tight sm:text-3xl">{name}</h1>
-            {industryNames.length > 0 && <button className="mt-2 text-left text-xs text-muted-foreground hover:text-foreground" onClick={() => setTab("companyInfo")} type="button"><span className="font-medium text-foreground">등록 업종</span> · {industryNames.slice(0, 2).join(" · ")}{industryNames.length > 2 ? ` · +${industryNames.length - 2}` : ""} <span className="whitespace-nowrap">전체 보기</span></button>}
-          </div>
-        </div>
-      </header>
+      <EntityDetailHeader entityLabel="업체" icon={<Building2 className="size-5" />} meta={<span>사업자등록번호 {businessNumber}</span>} title={name} tone="company">
+        {industryNames.length > 0 && <button className="mt-2 text-left text-xs text-muted-foreground hover:text-foreground" onClick={() => setTab("companyInfo")} type="button"><span className="font-medium text-foreground">등록 업종</span> · {industryNames.slice(0, 2).join(" · ")}{industryNames.length > 2 ? ` · +${industryNames.length - 2}` : ""} <span className="whitespace-nowrap">전체 보기</span></button>}
+      </EntityDetailHeader>
 
       {procurement.isLoading && !procurement.data && <EntityDetailContentSkeleton />}
       {procurement.isError && (

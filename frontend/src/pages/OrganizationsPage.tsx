@@ -2,6 +2,7 @@ import { ArrowUpRight, Landmark, LoaderCircle, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageContainer } from "@/components/layout/page-container";
+import { ProcurementSearchTabs } from "@/components/procurement/procurement-search-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,7 @@ export function OrganizationsPage() {
   };
   return (
     <PageContainer className="max-w-7xl">
+      <ProcurementSearchTabs />
       <header className="mb-8">
         <p className="text-sm font-semibold text-violet-700 dark:text-violet-300">기관 탐색</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">발주기관을 찾아보세요</h1>

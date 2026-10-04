@@ -153,6 +153,7 @@ async def search_notices(
     middle_category: str | None = Query(None, max_length=200),
     field_code: str | None = Query(None, max_length=20),
     include_history: bool = Query(False),
+    lineage_mode: str = Query("grouped", pattern="^(all|latest_only|grouped)$"),
     sort: str = Query("published_desc", pattern="^(deadline_asc|published_desc)$"),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
 ):
@@ -160,7 +161,7 @@ async def search_notices(
         q, published_from, published_to, deadline_from, deadline_to, contract_method,
         work_type, price_min, price_max, notice_organization_code,
         demand_organization_code, large_category, middle_category, field_code,
-        include_history, sort, page, page_size,
+        include_history, lineage_mode, sort, page, page_size,
     )
     cached = _notice_search_cache.get(cache_key)
     if cached and monotonic() - cached[0] < _NOTICE_SEARCH_CACHE_TTL_SECONDS:
@@ -177,6 +178,7 @@ async def search_notices(
         "sort": sort,
         "page": page,
         "page_size": page_size,
+        "lineage_mode": lineage_mode,
     }
     if not include_history:
         inputs["bid_statuses"] = ["scheduled", "open", "unknown"]
@@ -381,6 +383,53 @@ async def get_notice_organization_field_companies(notice_id: str, period_years: 
     return response
 
 
+@router.get("/{notice_id}/participation-context")
+async def get_notice_participation_context(notice_id: str, period_years: int = Query(3, ge=1, le=10)):
+    try:
+        number, order = split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    data = await teoria_client.execute(
+        "analyze_bid_participation_context",
+        {"bid_notice_id": f"{number}:{order}", "period_years": period_years},
+        max_objects=100,
+    )
+    outcome = data.get("outcome") or {}
+    outcome.setdefault("registry_version", data.get("registry", {}).get("version"))
+    return outcome
+
+
+@router.get("/{notice_id}/related-projects")
+async def search_notice_related_projects(
+    notice_id: str,
+    project_filter: str = Query("all", pattern="^(all|similar_amount|entry_or_reentering_supplier|repeat_supplier)$"),
+    project_filters: list[str] | None = Query(None),
+    filter_operator: str = Query("and", pattern="^(and|or)$"),
+    sort: str = Query("recent_desc", pattern="^(recent_desc|amount_desc|amount_similarity)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(5, ge=1, le=50),
+):
+    try:
+        number, order = split_notice_id(notice_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
+    allowed_filters = {"similar_amount", "entry_or_reentering_supplier", "repeat_supplier"}
+    normalized_filters = list(dict.fromkeys(project_filters or []))
+    if any(item not in allowed_filters for item in normalized_filters):
+        raise HTTPException(422, detail={"code": "invalid_project_filters", "message": "지원하지 않는 계약 이력 필터입니다."})
+    inputs = {"bid_notice_id": f"{number}:{order}", "project_filter": project_filter, "sort": sort, "page": page, "page_size": page_size}
+    if project_filters is not None:
+        inputs.update({"project_filters": normalized_filters, "filter_operator": filter_operator})
+    data = await teoria_client.execute(
+        "search_bid_related_projects",
+        inputs,
+        max_objects=min(page_size * 5, 500),
+    )
+    outcome = data.get("outcome") or {}
+    outcome.setdefault("registry_version", data.get("registry", {}).get("version"))
+    return outcome
+
+
 @router.get("/{notice_id}/organization-company-relationship")
 async def get_notice_organization_company_relationship(
     notice_id: str,
@@ -438,16 +487,122 @@ async def get_notice_project_lineage(notice_id: str, period_years: int = Query(1
 async def get_notice_activity(notice_id: str):
     try: number, order = split_notice_id(notice_id)
     except ValueError as exc: raise HTTPException(422, detail={"code": "invalid_bid_notice_id", "message": "공고 ID는 공고번호:차수 형식이어야 합니다."}) from exc
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=3650)
-    base = await teoria_client.execute("get_bid_notice", {"notice_number": number, "notice_order": order}, max_objects=10)
-    found = objects_of(base, "bid_notice")
-    if not found: raise HTTPException(404, detail={"code": "bid_notice_not_found", "message": "공고를 찾을 수 없습니다."})
-    participation_task = teoria_client.execute("search_bid_participations", {"notice_number": number, "opening_at_from": start.isoformat(), "opening_at_to": now.isoformat(), "page": 1, "page_size": 100}, max_objects=300)
-    award_task = teoria_client.execute("search_bid_awards", {"query": number, "opening_at_from": start.isoformat(), "opening_at_to": now.isoformat(), "page": 1, "page_size": 20}, max_objects=100)
-    contract_task = teoria_client.execute("get_bid_notice_contracts", {"notice_number": number, "page": 1, "page_size": 20}, max_objects=60)
-    participations, awards, contracts = await asyncio.gather(participation_task, award_task, contract_task)
-    return {"participations": [opening_participation(obj) for obj in objects_of(participations, "bid_opening_participation")], "awards": [award(obj) for obj in objects_of(awards, "bid_award") if obj.get("properties", {}).get("notice_number") == number], "contracts": [contract(obj) for obj in objects_of(contracts, "contract")], "contract_pagination": contracts.get("pagination", {})}
+    canonical_id = f"{number}:{order}"
+    context, participation_data, contract_data = await asyncio.gather(
+        teoria_client.execute(
+            "get_bid_notice_relationship_context",
+            {"bid_notice_id": canonical_id, "relationship_history_years": 5},
+            max_objects=500,
+        ),
+        teoria_client.execute(
+            "get_bid_notice_participations",
+            {"bid_notice_id": canonical_id},
+            max_objects=500,
+        ),
+        teoria_client.execute(
+            "get_bid_notice_contracts",
+            {"notice_number": number, "page": 1, "page_size": 20},
+            max_objects=100,
+        ),
+    )
+    outcome = context.get("outcome") or {}
+    if not outcome.get("bid_notice"):
+        raise HTTPException(404, detail={"code": "bid_notice_not_found", "message": "공고를 찾을 수 없습니다."})
+
+    participants = outcome.get("participants") or []
+    participation_outcome = participation_data.get("outcome") or {}
+    opening_events = participation_outcome.get("opening_events") or []
+    participations = []
+    awards = []
+    contracted_participants = []
+    for event_index, event in enumerate(opening_events):
+        for participant_index, item in enumerate(event.get("participants") or []):
+            company_number = item.get("business_registration_number")
+            participations.append({
+                "id": f"{canonical_id}:participation:{event.get('bid_classification_number') or event_index}:{event.get('rebid_number') or '000'}:{company_number or participant_index}",
+                "bid_notice_id": canonical_id,
+                "notice_number": number,
+                "notice_order": order,
+                "bid_classification_number": event.get("bid_classification_number"),
+                "rebid_number": event.get("rebid_number"),
+                "company_number": company_number,
+                "company_name": item.get("company_name"),
+                "rank": item.get("opening_rank"),
+                "bid_amount": item.get("bid_amount"),
+                "bid_rate": item.get("bid_rate"),
+                "result": item.get("result"),
+                "result_confirmed": item.get("result_confirmed"),
+            })
+    for index, item in enumerate(participants):
+        company_number = item.get("business_registration_number")
+        company_name = item.get("company_name")
+        current_award = item.get("current_award") or {}
+        if current_award.get("awarded"):
+            awards.append({
+                "id": f"{canonical_id}:award:{company_number or index}",
+                "bid_notice_id": canonical_id,
+                "notice_number": number,
+                "notice_order": order,
+                "notice_name": outcome["bid_notice"].get("notice_name"),
+                "company_number": company_number,
+                "company_name": company_name,
+                "winning_amount": current_award.get("winning_amount"),
+                "winning_rate": current_award.get("winning_rate"),
+                "award_date": current_award.get("award_date"),
+                "organization_code": outcome["bid_notice"].get("organization_code"),
+                "organization_name": outcome["bid_notice"].get("organization_name"),
+            })
+        current_contract = item.get("current_contract") or {}
+        if current_contract.get("contracted"):
+            contracted_participants.append((item, current_contract))
+
+    contracts = [contract(obj) for obj in objects_of(contract_data, "contract")]
+    if contracted_participants:
+        representative = contracted_participants[0][1]
+        contractors = [{
+            "business_registration_number": item.get("business_registration_number"),
+            "company_name": item.get("company_name"),
+            "company_role": current.get("company_role"),
+            "share_percent": current.get("share_percent"),
+            "share_completeness": "complete" if current.get("share_percent") is not None else "unknown",
+        } for item, current in contracted_participants]
+        lead = next((item for item in contractors if item.get("company_role") in {"sole", "consortium_lead"}), contractors[0])
+        relationship_contract = {
+            "id": f"{canonical_id}:contract",
+            "name": outcome["bid_notice"].get("notice_name"),
+            "notice_number": number,
+            "bid_notice_id": canonical_id,
+            "amount": representative.get("contract_amount"),
+            "concluded_date": representative.get("contract_date"),
+            "contractors": contractors,
+            "lead_contractor": lead,
+            "contractor_count": len(contractors),
+            "contractor_completeness": outcome.get("data_completeness", {}).get("status"),
+        }
+        if contracts:
+            for contract_item in contracts:
+                contract_item["contractors"] = contractors
+                contract_item["lead_contractor"] = lead
+                contract_item["contractor_count"] = len(contractors)
+                contract_item["contractor_completeness"] = outcome.get("data_completeness", {}).get("status")
+        else:
+            contracts.append(relationship_contract)
+
+    return {
+        "participations": participations,
+        "opening_events": opening_events,
+        "participation_summary": {
+            "source_participant_count": sum(event.get("source_participant_count") or 0 for event in opening_events),
+            "stored_participant_count": sum(event.get("stored_participant_count") or 0 for event in opening_events),
+            "returned_participant_count": sum(event.get("returned_participant_count") or 0 for event in opening_events),
+            "retention_policy": next((event.get("retention_policy") for event in opening_events if event.get("retention_policy")), None),
+            "data_completeness": participation_outcome.get("data_completeness") or {},
+        },
+        "awards": awards,
+        "contracts": contracts,
+        "contract_pagination": {"page": 1, "page_size": len(contracts), "total_items": len(contracts), "total_pages": 1 if contracts else 0},
+        "registry_version": context.get("registry", {}).get("version"),
+    }
 
 
 @router.get("/{notice_id}/relationship-context")

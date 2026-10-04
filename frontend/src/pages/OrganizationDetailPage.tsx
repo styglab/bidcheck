@@ -1,12 +1,14 @@
 import * as Popover from "@radix-ui/react-popover";
-import { ArrowUpRight, ChevronDown, CircleHelp, Landmark, LoaderCircle, Search, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Landmark, LoaderCircle, Search, X } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { EntityTabs } from "@/components/common/entity-tabs";
 import { ListPagination } from "@/components/common/list-pagination";
+import { MetricHelp } from "@/components/common/metric-help";
 import { ProcurementFilterPanel } from "@/components/procurement/procurement-filter-panel";
 import { RelationshipAnalysis } from "@/components/procurement/relationship-analysis";
 import { EntityDetailContentSkeleton, EntityDetailLayout } from "@/components/layout/entity-detail-layout";
+import { EntityDetailHeader } from "@/components/layout/entity-detail-header";
 import { PageError, SectionError } from "@/components/common/error-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
@@ -44,10 +46,6 @@ const workTypeStyle: Record<string, string> = {
 function UpdatingOverlay({ show, label = "불러오는 중" }: { show: boolean; label?: string }) {
   if (!show) return null;
   return <div className="absolute inset-0 z-20 grid place-items-center rounded-2xl bg-background/45 backdrop-blur-[1px]" role="status"><span className="inline-flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-sm"><LoaderCircle className="size-4 animate-spin text-[var(--brand)]" />{label}</span></div>;
-}
-
-function MetricHelp({ label, children }: { label: string; children: React.ReactNode }) {
-  return <button className="group relative inline-flex rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={label} type="button"><CircleHelp className="size-3.5" aria-hidden="true" /><span className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-64 rounded-xl border bg-popover p-3 text-left text-xs font-normal leading-relaxed text-popover-foreground shadow-lg group-hover:block group-focus:block">{children}</span></button>;
 }
 
 function ContractCompanyPicker({ companies, label, contextParams }: { companies: Array<{ business_registration_number?: string; company_name?: string; company_role_label?: string; share_percent?: number | null }>; label: string; contextParams?: URLSearchParams }) {
@@ -402,17 +400,7 @@ export function OrganizationDetailPage() {
     <EntityDetailLayout fallbackTo="/organizations" surface={false}>
       <ProcurementFilterPanel earliestYear={earliestYear} currentYear={currentYear} period={draftPeriod} onPeriodChange={setDraftPeriod} onPeriodCommit={setPeriodRange} workTypeValue={selectedWorkType ?? "all"} workTypeOptions={[{ value: "all", label: "전체" }, ...Object.entries(workTypeLabel).map(([value, label]) => ({ value, label }))]} onWorkTypeChange={setWorkType} fieldValue="current" fieldOptions={[{ value: "current", label: selectedFieldCode ? appliedField?.field_name ?? "선택 분야" : isSingleLevelField ? appliedField?.large_category ?? "선택 분야" : selectedLargeCategory ? "세부 분야 선택" : "분야 선택" }, ...[...fieldDistribution].sort((left, right) => (right.attributed_contract_amount ?? 0) - (left.attributed_contract_amount ?? 0)).map((field) => ({ value: fieldIdentity(field), label: procurementFieldOptionLabel(field, money, workTypeLabel) })).filter((option) => Boolean(option.value))]} fieldDisabled={Boolean(selectedFieldCode || isSingleLevelField)} onFieldChange={(value) => { const field = fieldDistribution.find((item) => fieldIdentity(item) === value); if (field) selectField(field); }} appliedFilters={appliedProcurementFilters} onReset={resetFilters} isUpdating={isUpdating} />
       <article className="mt-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
-      <header className="border-b pb-5">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
-            <Landmark className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><Badge className="border-0 bg-violet-100 text-violet-800 hover:bg-violet-100 dark:bg-violet-950 dark:text-violet-200">기관</Badge><span>{organization?.jurisdiction_type ?? "기관 유형 미상"} · 기관코드 {organizationId}</span></div>
-            <h1 className="mt-1.5 text-2xl font-bold tracking-tight sm:text-3xl">{organization?.name}</h1>
-          </div>
-        </div>
-      </header>
+      <EntityDetailHeader entityLabel="기관" icon={<Landmark className="size-5" />} meta={<span>{organization?.jurisdiction_type ?? "기관 유형 미상"} · 기관코드 {organizationId}</span>} title={organization?.name} tone="organization" />
 
       {procurement.isLoading && !procurement.data && (
         <EntityDetailContentSkeleton />

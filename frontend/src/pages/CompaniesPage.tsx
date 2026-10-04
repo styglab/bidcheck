@@ -2,6 +2,7 @@ import { ArrowUpRight, Building2, LoaderCircle, Search, Sparkles } from "lucide-
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageContainer } from "@/components/layout/page-container";
+import { ProcurementSearchTabs } from "@/components/procurement/procurement-search-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,6 +39,7 @@ export function CompaniesPage() {
 
   return (
     <PageContainer className="max-w-7xl">
+      <ProcurementSearchTabs />
       <header className="mb-8">
         <p className="text-sm font-semibold text-teal-700 dark:text-teal-300">업체 탐색</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">어떤 분야의 업체를 찾고 계신가요?</h1>

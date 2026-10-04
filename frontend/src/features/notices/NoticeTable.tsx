@@ -106,6 +106,11 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
                   <Badge variant="outline" className="h-5 text-[10px]">
                     {workTypeLabels[notice.work_type] ?? notice.work_type ?? "구분 미상"}
                   </Badge>
+                  {notice.is_re_notice && (
+                    <Badge className="h-5 border-0 bg-blue-50 text-[10px] text-blue-800 hover:bg-blue-50">
+                      재공고{(notice.lineage_count ?? 1) > 1 ? ` · 이력 ${notice.lineage_count}건` : ""}
+                    </Badge>
+                  )}
                   {notice.contract_method && (
                     <Badge variant="secondary" className="h-5 text-[10px]">
                       {notice.contract_method}

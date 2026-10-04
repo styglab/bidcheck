@@ -1,17 +1,16 @@
 import { LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { NoticeTable } from "../features/notices/NoticeTable";
-import { noticeQueryOptions, useNotices, type NoticeFilters } from "../features/notices/api";
+import { useNotices, type NoticeFilters } from "../features/notices/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/layout/page-container";
 import { ListPagination } from "@/components/common/list-pagination";
+import { ProcurementSearchTabs } from "@/components/procurement/procurement-search-tabs";
 
 export function NoticesPage() {
-  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const workTypes = [
     ["goods", "물품"],
@@ -25,9 +24,12 @@ export function NoticesPage() {
   const selectedWorkType = validWorkTypes.includes(workTypeParam as (typeof validWorkTypes)[number])
     ? workTypeParam
     : undefined;
+  const historyScope = params.get("scope") === "all";
   const filters: NoticeFilters = {
     q: params.get("q") || undefined,
     work_type: selectedWorkType,
+    include_history: historyScope,
+    lineage_mode: "grouped",
     sort: "published_desc",
     page: Number(params.get("page") || 1),
     page_size: Number(params.get("page_size") || 20),
@@ -45,19 +47,6 @@ export function NoticesPage() {
   const [draftWorkType, setDraftWorkType] = useState<string | undefined>(selectedWorkType);
   const noticeQuery = useNotices(filters);
   useEffect(() => {
-    const totalPages = noticeQuery.data?.pagination.total_pages ?? 0;
-    [filters.page! - 1, filters.page! + 1]
-      .filter((page) => page >= 1 && page <= totalPages)
-      .forEach((page) => void queryClient.prefetchQuery(noticeQueryOptions({ ...filters, page })));
-  }, [
-    filters.page,
-    filters.page_size,
-    filters.q,
-    filters.work_type,
-    noticeQuery.data?.pagination.total_pages,
-    queryClient,
-  ]);
-  useEffect(() => {
     const timer = window.setTimeout(() => {
       setKeyword(filters.q ?? "");
       setDraftWorkType(selectedWorkType);
@@ -66,19 +55,42 @@ export function NoticesPage() {
   }, [filters.q, selectedWorkType]);
   return (
     <PageContainer className="max-w-7xl">
+      <ProcurementSearchTabs />
       <header className="mb-8">
-        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">공고 탐색</p>
+        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">공고 조회</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          입찰공고를 찾아보세요
+          전체 공고를 확인하세요
         </h1>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          공고를 찾고 발주기관과 이후 낙찰·계약 흐름을 확인할 수 있습니다.
+          발주 공고를 검색하고 이후 낙찰·계약 결과까지 이어서 확인할 수 있습니다.
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           나라장터 API 제공 범위에 따라 일부 공고는 표시되지 않을 수 있습니다.
         </p>
       </header>
       <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
+        <div className="mb-3 flex flex-wrap gap-2" aria-label="공고 조회 범위">
+          <Button
+            type="button"
+            size="sm"
+            variant={!historyScope ? "default" : "outline"}
+            className="rounded-full px-4"
+            aria-pressed={!historyScope}
+            onClick={() => update({ scope: "" })}
+          >
+            진행 공고
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={historyScope ? "default" : "outline"}
+            className="rounded-full px-4"
+            aria-pressed={historyScope}
+            onClick={() => update({ scope: "all" })}
+          >
+            전체 이력
+          </Button>
+        </div>
         <div className="mb-4 flex flex-wrap gap-2" aria-label="업무 구분">
           <Button
             type="button"
