@@ -226,3 +226,72 @@ def test_batch_assessment_returns_outcome_items(monkeypatch):
     assert calls[0][0] == "assess_company_bid_eligibilities"
     assert calls[0][1]["bid_notice_ids"] == ["NOTICE:000"]
     assert calls[0][2]["max_objects"] == 100
+
+
+def test_organization_field_companies_uses_current_participation_context(monkeypatch):
+    calls = []
+
+    async def execute(capability, inputs, **options):
+        calls.append((capability, inputs, options))
+        return {
+            "outcome": {
+                "analysis_basis": {"organization_code": "ORG-1", "period_years": 5},
+                "supplier_concentration": {"company_count": 2},
+                "market_entry": {"new_supplier_company_count": 1},
+                "top_suppliers": [{"company_number": "1234567890"}],
+                "attention_suppliers": [{"company_number": "0987654321"}],
+                "top_suppliers_basis": {"limit": 5},
+            },
+            "registry": {"version": "test"},
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get(
+        "/api/v1/bids/NOTICE:000/organization-field-companies?period_years=5"
+    )
+
+    assert response.status_code == 200
+    assert calls == [(
+        "analyze_bid_participation_context",
+        {"bid_notice_id": "NOTICE:000", "period_years": 5},
+        {"max_objects": 300},
+    )]
+    assert response.json()["organization_field_companies"][0]["company_number"] == "1234567890"
+    assert response.json()["market_similar_companies"][0]["company_number"] == "0987654321"
+
+
+def test_market_context_uses_related_projects_without_legacy_capabilities(monkeypatch):
+    calls = []
+
+    async def execute(capability, inputs, **options):
+        calls.append((capability, inputs, options))
+        if capability == "get_bid_notice":
+            return {"objects": [_notice("NOTICE:000", "open", "2026-09-01T00:00:00+00:00")]}
+        assert capability == "search_bid_related_projects"
+        return {
+            "outcome": {
+                "analysis_basis": {"period_years": 5},
+                "items": [{
+                    "contract_event_id": "CONTRACT-1",
+                    "bid_notice_id": "PAST:000",
+                    "notice_name": "과거 사업",
+                    "company_number": "1234567890",
+                    "company_name": "테스트기업",
+                    "contract_amount": 100000000,
+                    "first_contract_date": "2025-03-01",
+                    "matched_filters": ["similar_amount"],
+                }],
+            }
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get("/api/v1/bids/NOTICE:000/market-context")
+
+    assert response.status_code == 200
+    assert [call[0] for call in calls] == ["get_bid_notice", "search_bid_related_projects"]
+    payload = response.json()
+    assert payload["similar_notices"][0]["company_number"] == "1234567890"
+    assert payload["companies"][0]["contract_count"] == 0
+    assert payload["sample_size"] == 1

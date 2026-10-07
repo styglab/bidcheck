@@ -314,7 +314,7 @@ POST /v1/capabilities/get_business_registration_status:execute
 }
 ```
 
-응답의 `taxpayer_status_observation` 객체에서 사업자 상태, 과세유형 및 관찰시각을 확인한다. 이 API는 사업자등록 진위확인과 다르다. 상호, 대표자명, 개업일자를 검증해야 한다면 별도 `verify_business_registration` Capability의 입력 스키마를 확인한다.
+응답의 `taxpayer_status_observation` 객체에서 사업자 상태, 과세유형 및 관찰시각을 확인한다. 이 API는 사업자등록 진위확인과 다르다. 현재 입찰체크 Runtime 계약은 상호·대표자명·개업일자를 이용한 별도 진위확인 Capability를 공개하지 않는다.
 
 ### 혁신기업 인증 확인
 

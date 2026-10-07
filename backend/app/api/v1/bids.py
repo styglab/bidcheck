@@ -1,16 +1,15 @@
 import asyncio
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import monotonic
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
 from app.services.teoria_adapter import (
-    award,
     contract,
     notice,
-    opening_participation,
     objects_of,
     participation_finding,
     participation_finding_evidence,
@@ -166,12 +165,12 @@ async def search_notices(
     cached = _notice_search_cache.get(cache_key)
     if cached and monotonic() - cached[0] < _NOTICE_SEARCH_CACHE_TTL_SECONDS:
         return cached[1]
-    end = published_to or datetime.now(timezone.utc)
+    end = published_to or datetime.now(UTC)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
     start = published_from or end - timedelta(days=365 * 5 if include_history else 90)
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     inputs = {
         "notice_published_at_from": start.isoformat(),
         "notice_published_at_to": end.isoformat(),
@@ -359,21 +358,25 @@ async def get_notice_organization_field_companies(notice_id: str, period_years: 
     if cached and monotonic() - cached[0] < _MARKET_CONTEXT_CACHE_TTL_SECONDS:
         return cached[1]
     data = await teoria_client.execute(
-        "analyze_bid_organization_field_companies",
+        "analyze_bid_participation_context",
         {"bid_notice_id": canonical_id, "period_years": period_years},
         max_objects=300,
     )
     outcome = data.get("outcome") or {}
+    analysis_basis = outcome.get("analysis_basis") or {}
     response = {
         "bid_notice_id": canonical_id,
-        "organization": outcome.get("organization"),
-        "analysis_basis": outcome.get("analysis_basis") or {},
-        "market_structure": outcome.get("market_structure") or {},
+        "organization": {
+            "code": analysis_basis.get("organization_code"),
+            "name": analysis_basis.get("organization_name"),
+        },
+        "analysis_basis": analysis_basis,
+        "market_structure": outcome.get("supplier_concentration") or {},
         "market_entry": outcome.get("market_entry") or {},
-        "organization_field_companies": outcome.get("organization_field_companies") or [],
-        "market_similar_companies": outcome.get("market_similar_companies") or [],
-        "organization_other_companies": outcome.get("organization_other_companies") or [],
-        "policy": outcome.get("policy") or {},
+        "organization_field_companies": outcome.get("top_suppliers") or [],
+        "market_similar_companies": outcome.get("attention_suppliers") or [],
+        "organization_other_companies": [],
+        "policy": outcome.get("top_suppliers_basis") or {},
         "registry_version": data.get("registry", {}).get("version"),
     }
     if len(_organization_field_company_cache) >= 200:
@@ -403,7 +406,7 @@ async def get_notice_participation_context(notice_id: str, period_years: int = Q
 async def search_notice_related_projects(
     notice_id: str,
     project_filter: str = Query("all", pattern="^(all|similar_amount|entry_or_reentering_supplier|repeat_supplier)$"),
-    project_filters: list[str] | None = Query(None),
+    project_filters: Annotated[list[str] | None, Query()] = None,
     filter_operator: str = Query("and", pattern="^(and|or)$"),
     sort: str = Query("recent_desc", pattern="^(recent_desc|amount_desc|amount_similarity)$"),
     page: int = Query(1, ge=1),
@@ -631,11 +634,11 @@ async def get_notice_market_context(notice_id: str):
     base, similar_data = await asyncio.gather(
         teoria_client.execute("get_bid_notice", {"notice_number": number, "notice_order": order}, max_objects=10),
         teoria_client.execute(
-            "find_similar_bid_notices",
+            "search_bid_related_projects",
             {
                 "bid_notice_id": notice_id,
-                "period_years": 5,
-                "result_statuses": ["awarded", "contracted"],
+                "project_filters": [],
+                "sort": "recent_desc",
                 "page": 1,
                 "page_size": 50,
             },
@@ -647,30 +650,30 @@ async def get_notice_market_context(notice_id: str):
         raise HTTPException(404, detail={"code": "bid_notice_not_found", "message": "공고를 찾을 수 없습니다."})
     current = notice(found[0])
     similar_outcome = similar_data.get("outcome", {})
-    similar_policy = similar_outcome.get("policy", {})
+    similar_policy = similar_outcome.get("analysis_basis", {})
     similar = [
         {
-            "id": item.get("bid_notice_id"),
+            "id": item.get("bid_notice_id") or item.get("contract_event_id"),
             "bid_notice_id": item.get("bid_notice_id"),
             "notice_number": str(item.get("bid_notice_id") or "").split(":", 1)[0],
             "notice_order": str(item.get("bid_notice_id") or ":").split(":", 1)[-1],
             "notice_name": item.get("notice_name"),
             "organization_code": item.get("organization_code"),
             "organization_name": item.get("organization_name"),
-            "estimated_price": item.get("estimated_price"),
-            "company_number": item.get("winning_company_number"),
-            "company_name": item.get("winning_company_name"),
-            "winning_amount": item.get("winning_amount"),
-            "winning_rate": item.get("winning_rate"),
-            "award_date": item.get("award_date"),
-            "notice_published_date": item.get("notice_published_date"),
-            "similarity_score": round((item.get("similarity_score") or 0) * 100),
-            "similarity_level": item.get("similarity_level"),
-            "similarity_reasons": [
-                _SIMILARITY_REASON_LABELS.get(reason, reason)
-                for reason in item.get("similarity_reasons", [])
-            ],
-            "matched_features": item.get("matched_features", {}),
+            "estimated_price": item.get("project_amount"),
+            "company_number": item.get("company_number") or (item.get("contractors") or [{}])[0].get("company_number"),
+            "company_name": item.get("company_name") or (item.get("contractors") or [{}])[0].get("company_name"),
+            "winning_amount": item.get("attributed_contract_amount") or item.get("contract_amount"),
+            "winning_rate": None,
+            "award_date": item.get("first_contract_date") or item.get("contract_date"),
+            "notice_published_date": item.get("notice_published_at"),
+            "similarity_score": None,
+            "similarity_level": None,
+            "similarity_reasons": item.get("matched_filters") or [],
+            "matched_features": {
+                "relationship_status": item.get("relationship_status_summary"),
+                "is_similar_amount": item.get("is_similar_amount"),
+            },
         }
         for item in similar_outcome.get("items", [])
     ]
@@ -689,63 +692,6 @@ async def get_notice_market_context(notice_id: str):
         if (item.get("award_date") or "") > (company["latest_award_date"] or ""):
             company["latest_award_date"] = item.get("award_date")
     company_items = sorted(companies.values(), key=lambda item: (item["award_count"], item["total_amount"]), reverse=True)
-    similar_notice_ids = [item.get("bid_notice_id") for item in similar if item.get("bid_notice_id")]
-    if similar_notice_ids:
-        try:
-            relevant_data = await teoria_client.execute(
-                "find_bid_relevant_companies",
-                {"bid_notice_id": current["id"], "similar_bid_notice_ids": similar_notice_ids, "limit": 50},
-                max_objects=200,
-            )
-            relevant_items = relevant_data.get("outcome", {}).get("items", [])
-            company_items = []
-            if relevant_items:
-                similar_by_id = {item.get("bid_notice_id"): item for item in similar if item.get("bid_notice_id")}
-                for item in relevant_items:
-                    similar_history = item.get("similar_history", {})
-                    relationship = item.get("organization_relationship", {})
-                    region_status = item.get("region_eligibility", {}).get("status", item.get("region_status", "unknown"))
-                    industry_eligibility = item.get("industry_license_eligibility", {})
-                    industry_license_status = industry_eligibility.get("status", "unknown")
-                    if region_status not in {"satisfied", "not_applicable"} or industry_license_status not in {"satisfied", "not_applicable"}:
-                        continue
-                    participation_ids = similar_history.get("matched_participation_bid_notice_ids", [])
-                    award_ids = similar_history.get("matched_award_bid_notice_ids", [])
-                    contract_ids = similar_history.get("matched_contract_bid_notice_ids", [])
-                    activity_ids = list(dict.fromkeys([*participation_ids, *award_ids, *contract_ids]))
-                    organization_similar_ids = {
-                        bid_notice_id for bid_notice_id in activity_ids
-                        if similar_by_id.get(bid_notice_id, {}).get("organization_code") == current.get("organization_code")
-                    }
-                    company_items.append({
-                        "company_number": item.get("company_number"),
-                        "company_name": item.get("company_name"),
-                        "participation_count": similar_history.get("participation_count", 0),
-                        "award_count": similar_history.get("award_count", 0),
-                        "contract_count": similar_history.get("contract_count", 0),
-                        "total_amount": similar_history.get("award_amount") or 0,
-                        "latest_award_date": similar_history.get("latest_activity_date"),
-                        "organization_participation_count": relationship.get("participation_count", 0),
-                        "organization_award_count": relationship.get("award_count", 0),
-                        "organization_contract_count": relationship.get("contract_count", 0),
-                        "organization_contract_amount": relationship.get("contract_amount"),
-                        "organization_latest_activity_date": relationship.get("latest_activity_date"),
-                        "organization_similar_participation_count": len(organization_similar_ids.intersection(participation_ids)),
-                        "organization_similar_award_count": len(organization_similar_ids.intersection(award_ids)),
-                        "organization_similar_contract_count": len(organization_similar_ids.intersection(contract_ids)),
-                        "region_status": region_status,
-                        "industry_license_status": industry_license_status,
-                        "required_industries": industry_eligibility.get("required_industries", []),
-                        "required_licenses": industry_eligibility.get("required_licenses", []),
-                        "matched_industries": industry_eligibility.get("matched_industries", []),
-                        "matched_licenses": industry_eligibility.get("matched_licenses", []),
-                        "industry_license_reference_date": industry_eligibility.get("reference_date"),
-                        "signals": item.get("signals", []),
-                        "notice_ids": activity_ids,
-                        "activities": _company_activity_items(similar_history, relationship, similar_by_id),
-                    })
-        except HTTPException:
-            company_items = []
     signals = []
     if similar:
         signals.append({"type": "similar_notices", "label": f"유사공고 {len(similar)}건", "tone": "info"})
@@ -756,7 +702,7 @@ async def get_notice_market_context(notice_id: str):
         if concentration >= 50 and len(similar) >= 3:
             signals.append({"type": "concentration", "label": f"상위 업체 낙찰 비중 {concentration}%", "tone": "review"})
     response = {
-        "query_basis": similar_policy.get("similarity_profile", "bid_similarity_v1"),
+        "query_basis": similar_policy.get("classification_basis", "organization_official_field_contracts"),
         "signals": signals,
         "companies": company_items,
         "similar_notices": similar,
