@@ -17,7 +17,7 @@ export function PublicLayout() {
         <GlobalSearch />
         <nav className={menuOpen ? "is-open" : ""}>
           <NavLink className={["/notices", "/organizations", "/companies", "/explore"].some((path) => location.pathname.startsWith(path)) ? "active" : ""} to="/notices" onClick={closeMenu}>조달 검색</NavLink>
-          <NavLink className={location.pathname.startsWith("/relations") ? "active" : ""} to="/relations" onClick={closeMenu}>관계 지도</NavLink>
+          <NavLink className={location.pathname.startsWith("/relations") ? "active" : ""} to="/relations" onClick={closeMenu}>관계 탐색</NavLink>
           <NavLink to="/mcp" onClick={closeMenu}>MCP</NavLink>
         </nav>
         <div className="header-actions">

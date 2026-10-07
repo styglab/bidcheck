@@ -1,5 +1,5 @@
-import cytoscape, { type ElementDefinition } from "cytoscape";
-import { Building2, FileText, Landmark, LoaderCircle, Search, X } from "lucide-react";
+import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
+import { LoaderCircle, Maximize2, Minus, Plus, Search, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageContainer } from "@/components/layout/page-container";
@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCompactMoney as money } from "@/shared/format/money";
 import {
   useNotice,
-  useNoticeMarketContext,
   useNoticeOrganizationCompanyRelationship,
   useNoticeOrganizationFieldCompanies,
   type OrganizationFieldCompany,
@@ -20,7 +19,7 @@ type GraphSelection =
   | {
       type: "node";
       id: string;
-      kind: "notice" | "organization" | "company";
+      kind: "organization" | "company";
       label: string;
       company?: OrganizationFieldCompany;
     }
@@ -33,6 +32,48 @@ type GraphSelection =
       targetLabel: string;
     };
 
+const EXAMPLE_ELEMENTS: ElementDefinition[] = [
+  ...[
+    ["org-welfare", "복지정책기관", "organization", "true"],
+    ["org-digital", "디지털행정기관", "organization"],
+    ["org-local", "지역공공기관", "organization"],
+    ["org-health", "공공보건기관", "organization"],
+    ["org-data", "데이터진흥기관", "organization"],
+    ["company-alpha", "알파시스템", "company"],
+    ["company-beta", "베타데이터", "company"],
+    ["company-cloud", "클라우드웍스", "company"],
+    ["company-secure", "시큐어테크", "company"],
+    ["company-ai", "에이아이랩", "company"],
+    ["company-service", "서비스파트너스", "company"],
+    ["company-network", "네트워크솔루션", "company"],
+    ["company-public", "퍼블릭테크", "company"],
+    ["company-next", "넥스트플랫폼", "company"],
+    ["company-smart", "스마트웍스", "company"],
+  ].map(([id, label, kind, isCenter]) => ({ data: { id, label, kind, ...(isCenter ? { isCenter } : {}) } })),
+  ...[
+    ["org-welfare", "company-alpha", "계약 8건", "aggregate"],
+    ["org-welfare", "company-beta", "낙찰 5건", "aggregate"],
+    ["org-welfare", "company-service", "계약 3건", "aggregate"],
+    ["org-welfare", "company-public", "참여 11건", "confirmed"],
+    ["org-welfare", "company-next", "관련 분야", "analysis"],
+    ["org-digital", "company-alpha", "낙찰 4건", "aggregate"],
+    ["org-digital", "company-cloud", "계약 7건", "aggregate"],
+    ["org-digital", "company-ai", "참여 9건", "confirmed"],
+    ["org-digital", "company-next", "계약 2건", "aggregate"],
+    ["org-local", "company-service", "계약 6건", "aggregate"],
+    ["org-local", "company-network", "낙찰 4건", "aggregate"],
+    ["org-local", "company-smart", "참여 7건", "confirmed"],
+    ["org-health", "company-secure", "계약 5건", "aggregate"],
+    ["org-health", "company-cloud", "참여 8건", "confirmed"],
+    ["org-health", "company-smart", "낙찰 3건", "aggregate"],
+    ["org-data", "company-beta", "계약 9건", "aggregate"],
+    ["org-data", "company-ai", "낙찰 5건", "aggregate"],
+    ["org-data", "company-public", "참여 6건", "confirmed"],
+    ["org-data", "company-next", "관련 분야", "analysis"],
+    ["org-data", "company-alpha", "참여 4건", "confirmed"],
+  ].map(([source, target, relation, relationType], index) => ({ data: { id: `example-edge-${index}`, source, target, relation, relationType } })),
+];
+
 function ProcurementGraph({
   elements,
   onSelect,
@@ -41,6 +82,9 @@ function ProcurementGraph({
   onSelect: (selection?: GraphSelection) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const graph = useRef<Core | null>(null);
+  const nodeCount = elements.filter((element) => !element.data.source).length;
+  const edgeCount = elements.length - nodeCount;
   useEffect(() => {
     if (!container.current) return;
     const cy = cytoscape({
@@ -48,118 +92,178 @@ function ProcurementGraph({
       elements,
       wheelSensitivity: 0.22,
       minZoom: 0.45,
-      maxZoom: 1.7,
+      maxZoom: 2.2,
       boxSelectionEnabled: false,
+      panningEnabled: true,
+      userPanningEnabled: true,
+      zoomingEnabled: true,
+      userZoomingEnabled: true,
+      autoungrabify: false,
       style: [
         {
           selector: "node",
           style: {
-            width: 56,
-            height: 56,
-            "background-color": "#ffffff",
-            "border-width": 3,
-            "border-color": "#94a3b8",
+            width: 26,
+            height: 26,
+            "background-color": "#67e8f9",
+            "border-width": 1.5,
+            "border-color": "#cffafe",
             label: "data(label)",
-            color: "#0f172a",
-            "font-size": 11,
+            color: "#e2e8f0",
+            "font-size": 10,
             "font-weight": 650,
             "text-wrap": "wrap",
-            "text-max-width": "126px",
+            "text-max-width": "112px",
             "text-valign": "bottom",
-            "text-margin-y": 13,
+            "text-margin-y": 9,
+            "text-outline-color": "#020617",
+            "text-outline-width": 2,
+            "underlay-color": "#22d3ee",
+            "underlay-opacity": 0.2,
+            "underlay-padding": 7,
             "overlay-opacity": 0,
+            "transition-property": "opacity, border-width, width, height",
+            "transition-duration": 180,
           },
         },
         {
           selector: 'node[kind = "notice"]',
           style: {
-            shape: "round-rectangle",
-            width: 76,
-            height: 58,
-            "background-color": "#eff6ff",
-            "border-color": "#2563eb",
+            width: 38,
+            height: 38,
+            "background-color": "#60a5fa",
+            "border-color": "#dbeafe",
+            "underlay-color": "#3b82f6",
           },
         },
         {
           selector: 'node[kind = "organization"]',
-          style: { "background-color": "#f5f3ff", "border-color": "#7c3aed" },
+          style: {
+            shape: "diamond",
+            width: 46,
+            height: 46,
+            "background-color": "#a78bfa",
+            "border-color": "#ede9fe",
+            "underlay-color": "#8b5cf6",
+          },
         },
         {
           selector: 'node[kind = "company"]',
-          style: { "background-color": "#f0fdfa", "border-color": "#0f766e" },
+          style: {
+            "background-color": "#2dd4bf",
+            "border-color": "#ccfbf1",
+            "underlay-color": "#14b8a6",
+          },
         },
         {
           selector: 'node[isCenter = "true"]',
           style: {
-            width: 92,
-            height: 68,
-            "border-width": 4,
-            "font-size": 12,
-            "text-max-width": "155px",
+            width: 64,
+            height: 64,
+            "border-width": 2.5,
+            "font-size": 11,
+            "text-max-width": "148px",
+            "underlay-opacity": 0.32,
+            "underlay-padding": 14,
           },
         },
         {
           selector: "node:selected",
           style: {
-            "border-width": 5,
-            "border-color": "#0f172a",
-            "underlay-color": "#2563eb",
+            "border-width": 3,
+            "border-color": "#ffffff",
+            "underlay-color": "#ffffff",
             "underlay-opacity": 0.12,
-            "underlay-padding": 8,
+            "underlay-padding": 12,
+          },
+        },
+        {
+          selector: "node:active",
+          style: {
+            "overlay-color": "#2563eb",
+            "overlay-opacity": 0.08,
+            "overlay-padding": 10,
           },
         },
         {
           selector: "edge",
           style: {
-            width: 1.6,
-            "line-color": "#94a3b8",
-            "target-arrow-color": "#94a3b8",
+            width: 1,
+            "line-color": "#64748b",
+            "target-arrow-color": "#64748b",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            "arrow-scale": 0.72,
+            "arrow-scale": 0.55,
+            opacity: 0.48,
             "overlay-opacity": 0,
+            label: "data(relation)",
+            color: "#94a3b8",
+            "font-size": 8,
+            "font-weight": 650,
+            "text-outline-color": "#020617",
+            "text-outline-width": 2,
           },
         },
         {
           selector: 'edge[relationType = "aggregate"]',
-          style: { width: 2.6, "line-color": "#0f766e", "target-arrow-color": "#0f766e" },
+          style: { width: 1.8, "line-color": "#2dd4bf", "target-arrow-color": "#2dd4bf", opacity: 0.7 },
         },
         {
           selector: 'edge[relationType = "analysis"]',
           style: {
             width: 1.5,
-            "line-color": "#93c5fd",
-            "target-arrow-color": "#93c5fd",
+            "line-color": "#60a5fa",
+            "target-arrow-color": "#60a5fa",
             "line-style": "dashed",
             "line-dash-pattern": [7, 6],
           },
         },
         {
           selector: "edge:selected",
-          style: { width: 4, "line-color": "#0f172a", "target-arrow-color": "#0f172a" },
+          style: { width: 3, "line-color": "#f8fafc", "target-arrow-color": "#f8fafc", opacity: 1 },
+        },
+        {
+          selector: ".is-muted",
+          style: { opacity: 0.1 },
+        },
+        {
+          selector: ".is-related",
+          style: { "z-index": 8 },
         },
       ],
       layout: {
-        name: "concentric",
+        name: "cose",
         animate: false,
         fit: true,
-        padding: 58,
-        minNodeSpacing: 48,
-        spacingFactor: 1.08,
-        startAngle: -Math.PI / 2,
-        sweep: Math.PI * 2,
-        concentric: (node) =>
-          node.data("isCenter") === "true" ? 3 : node.data("kind") === "organization" ? 2 : 1,
-        levelWidth: () => 1,
+        padding: 72,
+        nodeRepulsion: () => 240000,
+        idealEdgeLength: () => 135,
+        edgeElasticity: () => 90,
+        nestingFactor: 1.15,
+        gravity: 0.22,
+        numIter: 1400,
+        initialTemp: 180,
+        coolingFactor: 0.96,
+        minTemp: 1,
       },
     });
+    graph.current = cy;
     cy.on("tap", "node", (event) => {
-      const data = event.target.data();
+      const node = event.target;
+      const data = node.data();
+      const related = node.closedNeighborhood();
+      cy.elements().removeClass("is-muted is-related");
+      cy.elements().difference(related).addClass("is-muted");
+      related.addClass("is-related");
       onSelect({ type: "node", id: data.id, kind: data.kind, label: data.label, company: data.company });
     });
     cy.on("tap", "edge", (event) => {
       const edge = event.target;
       const data = edge.data();
+      const related = edge.add(edge.connectedNodes());
+      cy.elements().removeClass("is-muted is-related");
+      cy.elements().difference(related).addClass("is-muted");
+      related.addClass("is-related");
       onSelect({
         type: "edge",
         id: data.id,
@@ -170,7 +274,11 @@ function ProcurementGraph({
       });
     });
     cy.on("tap", (event) => {
-      if (event.target === cy) onSelect(undefined);
+      if (event.target === cy) {
+        cy.elements().removeClass("is-muted is-related");
+        cy.elements().unselect();
+        onSelect(undefined);
+      }
     });
     const resize = new ResizeObserver(() => {
       cy.resize();
@@ -179,10 +287,27 @@ function ProcurementGraph({
     resize.observe(container.current);
     return () => {
       resize.disconnect();
+      graph.current = null;
       cy.destroy();
     };
   }, [elements, onSelect]);
-  return <div className="cytoscape-canvas" ref={container} />;
+  return (
+    <div className="graph-map" aria-label="기관·업체 관계 지도">
+      <div className="cytoscape-canvas" ref={container} />
+      <div className="graph-map-status" aria-hidden="true">
+        <span>RELATION UNIVERSE</span>
+        <strong>{nodeCount}개 개체</strong>
+        <i />
+        <strong>{edgeCount}개 연결</strong>
+      </div>
+      <div className="graph-map-hint">빈 공간을 드래그해 이동 · 노드를 드래그해 배치</div>
+      <div className="graph-map-controls" aria-label="지도 확대 및 축소">
+        <button type="button" aria-label="확대" onClick={() => graph.current?.zoom({ level: Math.min(graph.current.zoom() * 1.25, graph.current.maxZoom()), renderedPosition: { x: graph.current.width() / 2, y: graph.current.height() / 2 } })}><Plus /></button>
+        <button type="button" aria-label="축소" onClick={() => graph.current?.zoom({ level: Math.max(graph.current.zoom() / 1.25, graph.current.minZoom()), renderedPosition: { x: graph.current.width() / 2, y: graph.current.height() / 2 } })}><Minus /></button>
+        <button type="button" aria-label="화면에 맞추기" onClick={() => graph.current?.fit(undefined, 70)}><Maximize2 /></button>
+      </div>
+    </div>
+  );
 }
 
 export function RelationsPage({ embedded = false }: { embedded?: boolean }) {
@@ -190,10 +315,8 @@ export function RelationsPage({ embedded = false }: { embedded?: boolean }) {
   const noticeId = params.get("notice") ?? "";
   const [input, setInput] = useState(noticeId);
   const [selection, setSelection] = useState<GraphSelection>();
-  const [showPastNotices, setShowPastNotices] = useState(false);
   const detail = useNotice(noticeId || undefined);
   const relations = useNoticeOrganizationFieldCompanies(noticeId || undefined);
-  const market = useNoticeMarketContext(noticeId || undefined, showPastNotices);
   const notice = detail.data?.notice;
   const selectedCompany = selection?.type === "node" ? selection.company : undefined;
   const organizationCode = relations.data?.organization?.code ?? notice?.organization_code;
@@ -227,17 +350,7 @@ export function RelationsPage({ embedded = false }: { embedded?: boolean }) {
   const elements = useMemo<ElementDefinition[]>(() => {
     if (!notice) return [];
     const result: ElementDefinition[] = [
-      { data: { id: "current-notice", label: notice.name, kind: "notice", isCenter: "true" } },
-      { data: { id: "organization", label: notice.organization, kind: "organization" } },
-      {
-        data: {
-          id: "edge-issued",
-          source: "organization",
-          target: "current-notice",
-          relation: "발주",
-          relationType: "confirmed",
-        },
-      },
+      { data: { id: "organization", label: notice.organization, kind: "organization", isCenter: "true" } },
     ];
     companies.forEach((company) => {
       const id = `company-${company.company_number}`;
@@ -246,39 +359,15 @@ export function RelationsPage({ embedded = false }: { embedded?: boolean }) {
       result.push({
         data: {
           id: `related-${id}`,
-          source: "current-notice",
+          source: "organization",
           target: id,
-          relation: "현재 공고 관련 이력",
-          relationType: "analysis",
+          relation: orgCount > 0 ? `낙찰·계약 ${orgCount}건` : "동일 분야 활동",
+          relationType: orgCount > 0 ? "aggregate" : "analysis",
         },
       });
-      if (orgCount > 0)
-        result.push({
-          data: {
-            id: `awarded-${id}`,
-            source: "organization",
-            target: id,
-            relation: `기관 수주 ${orgCount}건`,
-            relationType: "aggregate",
-          },
-        });
     });
-    if (showPastNotices)
-      (market.data?.similar_notices ?? []).slice(0, 4).forEach((item, index) => {
-        const id = `past-${item.bid_notice_id ?? item.id}`;
-        result.push({ data: { id, label: item.notice_name ?? "과거 공고", kind: "notice" } });
-        result.push({
-          data: {
-            id: `past-edge-${index}`,
-            source: id,
-            target: "current-notice",
-            relation: "관련 공고",
-            relationType: "analysis",
-          },
-        });
-      });
     return result;
-  }, [companies, market.data?.similar_notices, notice, showPastNotices]);
+  }, [companies, notice]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -289,104 +378,124 @@ export function RelationsPage({ embedded = false }: { embedded?: boolean }) {
     }
   };
   return (
-    <div className={`relation-workspace ${embedded ? "is-embedded" : ""}`}>
-      {!embedded && (
-        <PageContainer className="max-w-[1600px] pb-5 pt-7">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-            <div>
-              <p className="text-sm font-semibold text-blue-800">관계 탐색</p>
-              <h1 className="mt-1 text-2xl font-bold">검색하고 연결을 탐색하세요</h1>
+    <PageContainer className={embedded ? "max-w-none p-0 sm:p-0" : "max-w-7xl"}>
+      {!embedded && <>
+        <header className="mb-8 max-w-3xl">
+          <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">관계 탐색 · NETWORK INTELLIGENCE</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">기관과 업체 사이, 보이지 않던 조달 관계를 발견하세요</h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">공고를 출발점으로 기관의 낙찰·계약 업체와 동일 분야 활동을 하나의 관계망에서 탐색합니다.</p>
+        </header>
+        <form className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5" onSubmit={submit}>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+              <Input value={input} onChange={(event) => setInput(event.target.value)} className="h-12 bg-muted/35 pl-11" placeholder="공고 ID 입력 (예: R26BK01759670:000)" aria-label="관계 탐색 공고 ID" />
             </div>
-            <form className="flex w-full max-w-2xl gap-2" onSubmit={submit}>
-              <div className="relative flex-1">
-                <Search
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  size={18}
-                />
-                <Input
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  className="h-11 bg-card pl-11"
-                  placeholder="공고 ID 입력"
-                />
-              </div>
-              <Button className="h-11 bg-blue-800">그래프 열기</Button>
-            </form>
+            <Button className="h-12 bg-blue-800 px-6 hover:bg-blue-700" disabled={!input.trim()}>관계 열기</Button>
           </div>
-        </PageContainer>
-      )}
-      {!embedded && !noticeId && (
-        <PageContainer className="max-w-[1600px]">
-          <section className="mt-12 rounded-3xl border border-dashed bg-card p-14 text-center">
-            <Search className="mx-auto text-blue-700" />
-            <h2 className="mt-4 text-xl font-bold">홈에서 공고를 검색하세요</h2>
-            <Button asChild variant="outline" className="mt-6">
-              <Link to="/">홈으로</Link>
-            </Button>
-          </section>
-        </PageContainer>
+        </form>
+      </>}
+      {!noticeId && !embedded && (
+        <section className="relative mt-8 overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex items-center justify-between gap-4 border-b p-4 sm:px-5">
+            <div className="min-w-0">
+              <Badge className="border-0 bg-amber-100 text-amber-900 hover:bg-amber-100">화면 예시</Badge>
+              <strong className="ml-3 align-middle text-sm">기관·업체 조달 네트워크</strong>
+            </div>
+            <Button asChild size="sm" variant="outline"><Link to="/notices">공고 찾기</Link></Button>
+          </div>
+          <ProcurementGraph elements={EXAMPLE_ELEMENTS} onSelect={setSelection} />
+          <div className="flex flex-wrap items-center gap-4 border-t px-5 py-3 text-xs">
+            <span><i className="legend-dot organization" />기관</span>
+            <span><i className="legend-dot company" />업체</span>
+            <span className="text-muted-foreground">빈 공간 드래그로 이동 · 휠로 확대/축소 · 노드는 직접 재배치</span>
+          </div>
+          {selection && <ExampleRelationDrawer selection={selection} onClose={() => setSelection(undefined)} />}
+        </section>
       )}
       {noticeId && (detail.isLoading || relations.isLoading) && (
-        <PageContainer className="max-w-[1600px]">
-          <Skeleton className="mt-5 h-[700px] rounded-2xl" />
-        </PageContainer>
+        <Skeleton className="mt-8 h-[620px] rounded-2xl" />
       )}
       {notice && (
-        <div className="network-stage">
-          <div className="network-toolbar">
+        <section className="relative mt-8 overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex items-center justify-between gap-4 border-b p-4 sm:px-5">
             <div className="min-w-0">
-              <Badge className="border-0 bg-blue-100 text-blue-800 hover:bg-blue-100">중심 공고</Badge>
-              <strong className="ml-3 align-middle text-sm">{notice.name}</strong>
+              <Badge className="border-0 bg-violet-100 text-violet-800 hover:bg-violet-100">중심 기관</Badge>
+              <strong className="ml-3 align-middle text-sm">{notice.organization}</strong>
+              <span className="ml-3 hidden text-xs text-muted-foreground lg:inline">출발 공고: {notice.name}</span>
             </div>
-            <div className="flex shrink-0 gap-2">
-              <Button size="sm" variant="outline" onClick={() => setShowPastNotices((value) => !value)}>
-                {showPastNotices ? "과거 공고 숨기기" : "과거 공고 보기"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelection(undefined)}>
-                선택 해제
-              </Button>
-            </div>
-          </div>
-          <div className="network-legend">
-            <span>
-              <i className="legend-dot organization" />
-              기관
-            </span>
-            <span>
-              <i className="legend-dot company" />
-              업체
-            </span>
-            <span>
-              <i className="legend-square notice" />
-              공고
-            </span>
-            <span className="text-muted-foreground">노드 클릭 · 선 클릭으로 근거 확인</span>
+            <Button size="sm" variant="ghost" onClick={() => setSelection(undefined)}>선택 해제</Button>
           </div>
           <ProcurementGraph elements={elements} onSelect={setSelection} />
+          <div className="flex flex-wrap items-center gap-4 border-t px-5 py-3 text-xs">
+            <span><i className="legend-dot organization" />기관</span>
+            <span><i className="legend-dot company" />업체</span>
+            <span className="text-muted-foreground">빈 공간 드래그로 이동 · 휠로 확대/축소 · 노드는 직접 재배치</span>
+          </div>
           {selection && (
             <RelationDrawer
               selection={selection}
-              noticeId={noticeId}
               organizationName={notice.organization}
               relationship={relationship}
               onClose={() => setSelection(undefined)}
             />
           )}
-        </div>
+        </section>
       )}
-    </div>
+    </PageContainer>
+  );
+}
+
+function ExampleRelationDrawer({
+  selection,
+  onClose,
+}: {
+  selection: GraphSelection;
+  onClose: () => void;
+}) {
+  const descriptions = {
+    organization: "조달 사업을 발주하고 업체와 낙찰·계약 관계를 형성한 기관입니다.",
+    company: "기관의 사업에 참여·낙찰·계약했거나 같은 분야에서 활동한 업체입니다.",
+  };
+  return (
+    <aside className="network-drawer">
+      <div className="border-b p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-blue-700">예시 {selection.type === "edge" ? "관계" : "노드"}</p>
+            <h2 className="mt-2 text-lg font-bold">{selection.type === "edge" ? selection.relation : selection.label}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="닫기"><X className="size-4 text-muted-foreground" /></button>
+        </div>
+      </div>
+      <div className="p-6">
+        {selection.type === "edge" ? (
+          <>
+            <Badge className="border-0" variant={selection.relationType === "analysis" ? "secondary" : "default"}>
+              {selection.relationType === "analysis" ? "분석 관계" : "확인된 관계"}
+            </Badge>
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              {selection.sourceLabel}과 {selection.targetLabel} 사이의 {selection.relation} 관계입니다. 실제 화면에서는 날짜·금액·원천 근거를 함께 표시합니다.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm leading-6 text-muted-foreground">{descriptions[selection.kind]}</p>
+        )}
+        <p className="mt-6 rounded-xl bg-muted/50 p-4 text-xs leading-5 text-muted-foreground">
+          이 그래프는 화면 구성을 설명하기 위한 예시이며 실제 조달 관계가 아닙니다.
+        </p>
+      </div>
+    </aside>
   );
 }
 
 function RelationDrawer({
   selection,
-  noticeId,
   organizationName,
   relationship,
   onClose,
 }: {
   selection: GraphSelection;
-  noticeId: string;
   organizationName: string;
   relationship: ReturnType<typeof useNoticeOrganizationCompanyRelationship>;
   onClose: () => void;
@@ -404,7 +513,7 @@ function RelationDrawer({
                   ? "업체"
                   : selection.kind === "organization"
                     ? "기관"
-                    : "공고"}
+                    : "개체"}
             </p>
             <h2 className="mt-2 text-lg font-bold">
               {selection.type === "edge" ? selection.relation : selection.label}
@@ -442,18 +551,9 @@ function RelationDrawer({
             </p>
           </>
         )}
-        {selection.type === "node" && selection.kind === "notice" && (
-          <Button asChild variant="outline" className="w-full">
-            <Link
-              to={`/notices/${encodeURIComponent(selection.id === "current-notice" ? noticeId : selection.id.replace("past-", ""))}`}
-            >
-              공고 프로필
-            </Link>
-          </Button>
-        )}
         {selection.type === "node" && selection.kind === "organization" && (
           <p className="text-sm leading-6 text-muted-foreground">
-            {organizationName}이 현재 공고를 발주했습니다.
+            {organizationName}을 중심으로 낙찰·계약 이력과 동일 분야 업체를 탐색하고 있습니다.
           </p>
         )}
         {company && (
