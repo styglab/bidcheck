@@ -11,7 +11,11 @@ export type Organization = {
 export function useOrganizationSearch(query: string) {
   return useQuery({
     queryKey: ["organizations", query],
-    queryFn: ({ signal }) => api<{ items: Organization[]; pagination?: { total_items: number }; registry_version?: string }>(`/organizations?q=${encodeURIComponent(query)}`, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }),
+    queryFn: ({ signal }) =>
+      api<{ items: Organization[]; pagination?: { total_items: number }; registry_version?: string }>(
+        `/organizations?q=${encodeURIComponent(query)}`,
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) },
+      ),
     enabled: query.trim().length >= 2,
     staleTime: 30 * 60_000,
     retry: false,
@@ -21,17 +25,43 @@ export function useOrganizationSearch(query: string) {
 export function useOrganization(code?: string) {
   return useQuery({
     queryKey: ["organization", code],
-    queryFn: ({ signal }) => api<{ organization: Organization; registry_version?: string }>(`/organizations/${encodeURIComponent(code!)}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<{ organization: Organization; registry_version?: string }>(
+        `/organizations/${encodeURIComponent(code!)}`,
+        { signal },
+      ),
     enabled: Boolean(code),
     staleTime: 30 * 60_000,
   });
 }
 
-type ProcurementFilters = { largeCategory?: string; middleCategory?: string; fieldCode?: string; workType?: string };
+type ProcurementFilters = {
+  largeCategory?: string;
+  middleCategory?: string;
+  fieldCode?: string;
+  workType?: string;
+};
 
-export function useOrganizationActivity(code?: string, enabled = true, periodYears = 5, page = 1, query?: string, filters: ProcurementFilters = {}, kind: "awards" | "contracts" = "awards", periodRange?: { from: number; to: number }) {
-  const search = new URLSearchParams({ period_years: String(periodYears), page: String(page), page_size: "20", kind });
-  if (periodRange) { search.set("period_from_year", String(periodRange.from)); search.set("period_to_year", String(periodRange.to)); }
+export function useOrganizationActivity(
+  code?: string,
+  enabled = true,
+  periodYears = 5,
+  page = 1,
+  query?: string,
+  filters: ProcurementFilters = {},
+  kind: "awards" | "contracts" = "awards",
+  periodRange?: { from: number; to: number },
+) {
+  const search = new URLSearchParams({
+    period_years: String(periodYears),
+    page: String(page),
+    page_size: "20",
+    kind,
+  });
+  if (periodRange) {
+    search.set("period_from_year", String(periodRange.from));
+    search.set("period_to_year", String(periodRange.to));
+  }
   if (query) search.set("q", query);
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
@@ -39,7 +69,13 @@ export function useOrganizationActivity(code?: string, enabled = true, periodYea
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
     queryKey: ["organization-activity", code, periodYears, periodRange, page, query, filters, kind],
-    queryFn: ({ signal }) => api<{ awards: import("../notices/api").ProcurementAward[]; award_pagination: { page?: number; total_items?: number; total_pages?: number }; contracts: import("../notices/api").ProcurementContract[]; contract_pagination: { page?: number; total_items?: number; total_pages?: number } }>(`/organizations/${encodeURIComponent(code!)}/activity?${search}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<{
+        awards: import("../notices/api").ProcurementAward[];
+        award_pagination: { page?: number; total_items?: number; total_pages?: number };
+        contracts: import("../notices/api").ProcurementContract[];
+        contract_pagination: { page?: number; total_items?: number; total_pages?: number };
+      }>(`/organizations/${encodeURIComponent(code!)}/activity?${search}`, { signal }),
     enabled: Boolean(code) && enabled,
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
@@ -87,8 +123,20 @@ export type ProcurementOutcome = {
     contractors?: ProcurementOutcomeCompany[];
   };
 };
-export function useOrganizationOutcomes(code?: string, enabled = true, periodRange?: { from: number; to: number }, page = 1, query?: string, filters: ProcurementFilters = {}) {
-  const search = new URLSearchParams({ period_from_year: String(periodRange?.from), period_to_year: String(periodRange?.to), page: String(page), page_size: "20" });
+export function useOrganizationOutcomes(
+  code?: string,
+  enabled = true,
+  periodRange?: { from: number; to: number },
+  page = 1,
+  query?: string,
+  filters: ProcurementFilters = {},
+) {
+  const search = new URLSearchParams({
+    period_from_year: String(periodRange?.from),
+    period_to_year: String(periodRange?.to),
+    page: String(page),
+    page_size: "20",
+  });
   if (query) search.set("q", query);
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
@@ -96,14 +144,20 @@ export function useOrganizationOutcomes(code?: string, enabled = true, periodRan
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
     queryKey: ["organization-outcomes", code, periodRange, page, query, filters],
-    queryFn: ({ signal }) => api<{ items: ProcurementOutcome[]; pagination: { page: number; total_items: number; total_pages: number }; registry_version?: string }>(`/organizations/${encodeURIComponent(code!)}/outcomes?${search}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<{
+        items: ProcurementOutcome[];
+        pagination: { page: number; total_items: number; total_pages: number };
+        registry_version?: string;
+      }>(`/organizations/${encodeURIComponent(code!)}/outcomes?${search}`, { signal }),
     enabled: Boolean(code && periodRange && enabled),
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
   });
 }
 
-export type ProcurementActivityStage = "all" | "scheduled" | "open" | "closed" | "award" | "contract" | "failed_or_cancelled";
+export type ProcurementActivityStage =
+  "all" | "scheduled" | "open" | "closed" | "award" | "contract" | "failed_or_cancelled";
 export type ProcurementActivity = Omit<ProcurementOutcome, "outcome_id" | "stage"> & {
   activity_id: string;
   notice_linkage: "linked" | "unlinked";
@@ -111,10 +165,36 @@ export type ProcurementActivity = Omit<ProcurementOutcome, "outcome_id" | "stage
   project_amount?: number;
   project_amount_basis?: string;
   project_amount_basis_name?: string;
-  notice?: { published_at?: string; bid_begin_at?: string; deadline_at?: string; status?: string; notice_status?: string; allocated_budget?: number; estimated_price?: number; base_amount?: number; display_amount?: number; display_amount_basis?: string; display_amount_basis_name?: string };
+  notice?: {
+    published_at?: string;
+    bid_begin_at?: string;
+    deadline_at?: string;
+    status?: string;
+    notice_status?: string;
+    allocated_budget?: number;
+    estimated_price?: number;
+    base_amount?: number;
+    display_amount?: number;
+    display_amount_basis?: string;
+    display_amount_basis_name?: string;
+  };
 };
-export function useOrganizationProcurementActivity(code?: string, enabled = true, periodRange?: { from: number; to: number }, page = 1, query?: string, stage: ProcurementActivityStage = "all", filters: ProcurementFilters = {}) {
-  const search = new URLSearchParams({ period_from_year: String(periodRange?.from), period_to_year: String(periodRange?.to), page: String(page), page_size: "20", stage });
+export function useOrganizationProcurementActivity(
+  code?: string,
+  enabled = true,
+  periodRange?: { from: number; to: number },
+  page = 1,
+  query?: string,
+  stage: ProcurementActivityStage = "all",
+  filters: ProcurementFilters = {},
+) {
+  const search = new URLSearchParams({
+    period_from_year: String(periodRange?.from),
+    period_to_year: String(periodRange?.to),
+    page: String(page),
+    page_size: "20",
+    stage,
+  });
   if (query) search.set("q", query);
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
@@ -122,7 +202,14 @@ export function useOrganizationProcurementActivity(code?: string, enabled = true
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
     queryKey: ["organization-procurement-activity", code, periodRange, page, query, stage, filters],
-    queryFn: ({ signal }) => api<{ items: ProcurementActivity[]; stage_counts: Record<ProcurementActivityStage, number>; linkage_counts: { linked: number; unlinked: number }; pagination: { page: number; total_items: number; total_pages: number }; registry_version?: string }>(`/organizations/${encodeURIComponent(code!)}/procurement-activity?${search}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<{
+        items: ProcurementActivity[];
+        stage_counts: Record<ProcurementActivityStage, number>;
+        linkage_counts: { linked: number; unlinked: number };
+        pagination: { page: number; total_items: number; total_pages: number };
+        registry_version?: string;
+      }>(`/organizations/${encodeURIComponent(code!)}/procurement-activity?${search}`, { signal }),
     enabled: Boolean(code && periodRange && enabled),
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
@@ -274,7 +361,12 @@ export type OrganizationProcurementProfile = {
     display_code?: string;
     display_name?: string;
     has_children?: boolean;
-    selection_filter?: { work_type?: string | null; large_category?: string | null; middle_category?: string | null; field_code?: string | null };
+    selection_filter?: {
+      work_type?: string | null;
+      large_category?: string | null;
+      middle_category?: string | null;
+      field_code?: string | null;
+    };
     detailed_items?: Array<{ code: string; name: string; sequence?: string }>;
     event_count: number;
     contract_event_count?: number;
@@ -336,14 +428,44 @@ export type OrganizationProcurementProfile = {
     basic_category?: string;
     level?: "large" | "middle" | "basic" | "detailed_item";
   };
-  analysis_basis: { period_from?: string; period_to?: string; period_years?: number; field_filter?: { large_category?: string; middle_category?: string; field_code?: string; field_name?: string }; work_type?: string };
+  analysis_basis: {
+    period_from?: string;
+    period_to?: string;
+    period_years?: number;
+    field_filter?: {
+      large_category?: string;
+      middle_category?: string;
+      field_code?: string;
+      field_name?: string;
+    };
+    work_type?: string;
+  };
   data_completeness: { status?: string; missing_reasons?: string[] };
   registry_version?: string;
   pagination?: { page?: number; page_size?: number; total_items?: number; total_pages?: number };
 };
-export function useOrganizationProcurementProfile(code?: string, periodYears = 5, filters: ProcurementFilters = {}, enabled = true, periodRange?: { from: number; to: number }, companies: { page?: number; query?: string; sort?: "contract_amount_desc" | "contract_count_desc" | "latest_contract_desc" } = {}) {
-  const search = new URLSearchParams({ period_years: String(periodYears), page: String(companies.page ?? 1), page_size: "20" });
-  if (periodRange) { search.set("period_from_year", String(periodRange.from)); search.set("period_to_year", String(periodRange.to)); }
+export function useOrganizationProcurementProfile(
+  code?: string,
+  periodYears = 5,
+  filters: ProcurementFilters = {},
+  enabled = true,
+  periodRange?: { from: number; to: number },
+  companies: {
+    page?: number;
+    pageSize?: number;
+    query?: string;
+    sort?: "contract_amount_desc" | "contract_count_desc" | "latest_contract_desc";
+  } = {},
+) {
+  const search = new URLSearchParams({
+    period_years: String(periodYears),
+    page: String(companies.page ?? 1),
+    page_size: String(companies.pageSize ?? 20),
+  });
+  if (periodRange) {
+    search.set("period_from_year", String(periodRange.from));
+    search.set("period_to_year", String(periodRange.to));
+  }
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
@@ -353,21 +475,49 @@ export function useOrganizationProcurementProfile(code?: string, periodYears = 5
   return useQuery({
     queryKey: ["organization-procurement-profile", code, periodYears, periodRange, filters, companies],
     queryFn: ({ signal }) =>
-      api<OrganizationProcurementProfile>(`/organizations/${encodeURIComponent(code!)}/procurement-profile?${search}`, { signal }),
+      api<OrganizationProcurementProfile>(
+        `/organizations/${encodeURIComponent(code!)}/procurement-profile?${search}`,
+        { signal },
+      ),
     enabled: Boolean(code) && enabled,
     staleTime: 10 * 60_000,
     placeholderData: (previous) => previous,
   });
 }
-export function useOrganizationSupplierEntries(code?: string, targetYear?: number, filters: ProcurementFilters = {}, enabled = true) {
-  const search = new URLSearchParams({ target_year: String(targetYear), entry_status: "first_observed", sort: "contract_amount_desc", page: "1", page_size: "5" });
+export function useOrganizationSupplierEntries(
+  code?: string,
+  targetYear?: number,
+  filters: ProcurementFilters = {},
+  enabled = true,
+  page = 1,
+  pageSize = 10,
+) {
+  const search = new URLSearchParams({
+    target_year: String(targetYear),
+    entry_status: "first_observed",
+    sort: "contract_amount_desc",
+    page: String(page),
+    page_size: String(pageSize),
+  });
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
-    queryKey: ["organization-supplier-entries", code, targetYear, filters],
-    queryFn: ({ signal }) => api<{ items: SupplierEntryCompany[]; supplier_entry?: SupplierEntry; pagination: { page: number; page_size: number; total_items: number; total_pages: number; sort?: string }; registry_version?: string }>(`/organizations/${encodeURIComponent(code!)}/supplier-entries?${search}`, { signal }),
+    queryKey: ["organization-supplier-entries", code, targetYear, filters, page, pageSize],
+    queryFn: ({ signal }) =>
+      api<{
+        items: SupplierEntryCompany[];
+        supplier_entry?: SupplierEntry;
+        pagination: {
+          page: number;
+          page_size: number;
+          total_items: number;
+          total_pages: number;
+          sort?: string;
+        };
+        registry_version?: string;
+      }>(`/organizations/${encodeURIComponent(code!)}/supplier-entries?${search}`, { signal }),
     enabled: Boolean(code && targetYear && enabled),
     staleTime: 10 * 60_000,
     placeholderData: (previous) => previous,
@@ -382,14 +532,29 @@ export function useOrganizationCompanyRelationship(
   enabled = true,
   periodRange?: { from: number; to: number },
 ) {
-  const search = new URLSearchParams({ page: String(page), page_size: "20", period_years: String(periodYears) });
-  if (periodRange) { search.set("period_from_year", String(periodRange.from)); search.set("period_to_year", String(periodRange.to)); }
+  const search = new URLSearchParams({
+    page: String(page),
+    page_size: "20",
+    period_years: String(periodYears),
+  });
+  if (periodRange) {
+    search.set("period_from_year", String(periodRange.from));
+    search.set("period_to_year", String(periodRange.to));
+  }
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
-    queryKey: ["organization-company-relationship", organizationCode, companyNumber, page, periodYears, periodRange, filters],
+    queryKey: [
+      "organization-company-relationship",
+      organizationCode,
+      companyNumber,
+      page,
+      periodYears,
+      periodRange,
+      filters,
+    ],
     queryFn: ({ signal }) =>
       api<import("../notices/api").OrganizationCompanyRelationshipResponse>(
         `/organizations/${encodeURIComponent(organizationCode!)}/companies/${encodeURIComponent(companyNumber!)}/relationship?${search}`,

@@ -2,11 +2,11 @@ from fastapi import APIRouter
 
 from app.api.v1.bids import router as bids_router
 from app.api.v1.checks import router as checks_router
-from app.api.v1.teoria_assessments import router as assessments_router
 from app.api.v1.companies import router as companies_router
-from app.api.v1.organizations import router as organizations_router
 from app.api.v1.home import router as home_router
+from app.api.v1.organizations import router as organizations_router
 from app.api.v1.search import router as search_router
+from app.api.v1.teoria_assessments import router as assessments_router
 
 api_router = APIRouter()
 api_router.include_router(bids_router, prefix="/bids", tags=["bids"])

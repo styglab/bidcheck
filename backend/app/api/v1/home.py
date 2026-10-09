@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
 
@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("/recent-awards")
 async def recent_awards():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data = await teoria_client.execute(
         "search_bid_awards",
         {"opening_at_from": (now - timedelta(days=90)).isoformat(), "opening_at_to": now.isoformat(), "sort": "award_desc", "page": 1, "page_size": 5},

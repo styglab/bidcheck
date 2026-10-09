@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -125,5 +125,5 @@ def split_notice_id(notice_id: str) -> tuple[str, str]:
 
 
 def default_period(days: int = 14) -> tuple[str, str]:
-    now = datetime.now(timezone.utc); start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    now = datetime.now(UTC); start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     return start.isoformat(), now.isoformat()

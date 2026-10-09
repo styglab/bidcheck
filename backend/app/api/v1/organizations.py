@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -68,13 +68,13 @@ async def get_organization_activity(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
 ):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if (period_from_year is None) != (period_to_year is None):
         raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
     if period_from_year is not None and (period_from_year > period_to_year or period_to_year > now.year):
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
-    start = datetime(period_from_year, 1, 1, tzinfo=timezone.utc) if period_from_year else (datetime(now.year - period_years + 1, 1, 1, tzinfo=timezone.utc) if period_years else now - timedelta(days=days))
-    end = datetime(period_to_year, 12, 31, 23, 59, 59, tzinfo=timezone.utc) if period_to_year and period_to_year < now.year else now
+    start = datetime(period_from_year, 1, 1, tzinfo=UTC) if period_from_year else (datetime(now.year - period_years + 1, 1, 1, tzinfo=UTC) if period_years else now - timedelta(days=days))
+    end = datetime(period_to_year, 12, 31, 23, 59, 59, tzinfo=UTC) if period_to_year and period_to_year < now.year else now
     shared_filters = {
         **({"query": q} if q else {}),
         **({"large_category": large_category} if large_category else {}),
@@ -106,7 +106,7 @@ async def get_organization_procurement_profile(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if (period_from_year is None) != (period_to_year is None):
         raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
     if period_from_year is not None and (period_from_year > period_to_year or period_to_year > current_year):
@@ -143,7 +143,7 @@ async def get_organization_supplier_entries(
     page: int = Query(1, ge=1),
     page_size: int = Query(5, ge=1, le=100),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if target_year > current_year:
         raise HTTPException(422, detail="대상 연도가 올바르지 않습니다.")
     data = await teoria_client.execute(
@@ -178,7 +178,7 @@ async def get_organization_procurement_outcomes(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if period_from_year > period_to_year or period_to_year > current_year:
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     data = await teoria_client.execute(
@@ -214,7 +214,7 @@ async def get_organization_procurement_activity(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if period_from_year > period_to_year or period_to_year > current_year:
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     data = await teoria_client.execute(
@@ -251,7 +251,7 @@ async def get_organization_company_relationship(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if (period_from_year is None) != (period_to_year is None):
         raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
     if period_from_year is not None and (period_from_year > period_to_year or period_to_year > current_year):

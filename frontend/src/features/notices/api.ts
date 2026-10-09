@@ -259,7 +259,12 @@ export function useNoticeActivity(noticeId?: string) {
   });
 }
 export type BidRelationshipContext = {
-  bid_notice: { bid_notice_id: string; notice_name: string; organization_code?: string; organization_name?: string };
+  bid_notice: {
+    bid_notice_id: string;
+    notice_name: string;
+    organization_code?: string;
+    organization_name?: string;
+  };
   lifecycle: { status: string; participation_count: number; award_count: number; contract_count: number };
   participants: Array<{
     business_registration_number?: string;
@@ -268,7 +273,12 @@ export type BidRelationshipContext = {
     bid_amount?: number;
     bid_rate?: number | string;
     result?: string;
-    current_award?: { awarded?: boolean; award_date?: string; winning_amount?: number; winning_rate?: number | string };
+    current_award?: {
+      awarded?: boolean;
+      award_date?: string;
+      winning_amount?: number;
+      winning_rate?: number | string;
+    };
     current_contract?: {
       contracted?: boolean;
       contract_date?: string;
@@ -521,21 +531,168 @@ export function useNoticeOrganizationFieldCompanies(noticeId?: string, enabled =
 }
 
 export type BidParticipationContext = {
-  analysis_basis?: { period_from?: string; period_to?: string; period_years?: number; field_filter?: Record<string, string> };
-  market_entry?: { status?: string; reference_year?: number; is_year_to_date?: boolean; contracted_company_count?: number; new_supplier_company_count?: number; new_supplier_rate?: number; lookback_years?: number; completeness?: string };
-  supplier_concentration?: { status?: string; company_count?: number; contract_event_count?: number; total_contract_amount?: number; top_1_share?: number; top_3_share?: number; top_5_share?: number; amount_completeness?: string };
-  project_scale?: { status?: string; current_project_amount?: number; current_project_amount_basis?: string; comparison_event_count?: number; median_project_amount?: number; percentile?: number; amount_completeness?: string };
-  competition?: { status?: string; source_bid_count?: number; overall_average_participant_count?: number; overall_median_participant_count?: number; recent_5_average_participant_count?: number; previous_5_average_participant_count?: number; completeness?: string; completeness_reason?: string | null };
-  peer_benchmark?: {
-    status?: string; peer_organization_count?: number;
-    supplier_concentration?: { current_value?: number; peer_median?: number; percentile?: number; peer_organization_count?: number; interpretation_allowed?: boolean; minimum_sample_satisfied?: boolean; completeness?: string };
-    new_supplier_amount_share?: { current_value?: number; peer_median?: number; percentile?: number; new_supplier_contract_amount?: number; total_eligible_contract_amount?: number; new_supplier_company_count?: number; contracted_company_count?: number; interpretation_allowed?: boolean };
-    competition?: { participant_count_median?: { current_value?: number; peer_median?: number; percentile?: number }; single_participant_share?: { current_value?: number; peer_median?: number; percentile?: number }; current_bid_count?: number; interpretation_allowed?: boolean; completeness?: string };
+  analysis_basis?: {
+    period_from?: string;
+    period_to?: string;
+    period_years?: number;
+    field_filter?: Record<string, string>;
   };
-  new_supplier_similar_amount_cases?: { status?: string; reference_amount?: number; amount_range?: { minimum_amount?: number; maximum_amount?: number; rule?: string }; eligible_case_count?: number; similar_amount_contract_event_count?: number; completeness?: string; items?: Array<{ company_number: string; company_name: string; contract_event_id?: string; unified_contract_number?: string; contract_name?: string; bid_notice_id?: string | null; notice_name?: string | null; first_contract_date?: string; attributed_contract_amount?: number; current_notice_amount_difference_rate?: number; entry_classification?: string; notice_linkage?: string; relationship_context?: { organization_code?: string; company_number?: string; contract_event_id?: string; period_from_year?: number; period_to_year?: number; work_type?: string; large_category?: string; middle_category?: string; field_code?: string } }> };
-  attention_suppliers?: Array<{ company_number: string; company_name: string; contract_event_count?: number; attributed_contract_amount?: number; latest_contract_date?: string; first_contract_date?: string; first_contract_status?: string; attention_reasons?: string[]; display_attention_reasons?: string[]; attention_reason_evidence?: Record<string, Record<string, unknown>>; relationship_context?: { organization_code?: string; company_number?: string; period_from_year?: number; period_to_year?: number; work_type?: string; large_category?: string; middle_category?: string; field_code?: string } }>;
-  top_suppliers?: Array<{ company_number: string; company_name: string; award_event_count?: number; contract_event_count?: number; attributed_contract_amount?: number; latest_contract_date?: string; active_years?: number[]; consecutive_active_years?: number; entry_classification?: string; same_organization_field_contract_count?: number; same_organization_field_contract_amount?: number; other_organization_same_field_contract_count?: number; other_organization_same_field_contract_amount?: number; similar_amount_contract_count?: number; new_supplier_case_count?: number; attention_reasons?: string[] }>;
-  related_past_projects?: Array<{ bid_notice_id: string; notice_name: string; notice_kind?: string; notice_lineage_id?: string; lineage_count?: number; root_bid_notice_id?: string; relationship_type?: string; notice_published_at?: string; awarded_company_number?: string | null; awarded_company_name?: string | null; contract_amount?: number | null; contract_date?: string | null }>;
+  market_entry?: {
+    status?: string;
+    reference_year?: number;
+    is_year_to_date?: boolean;
+    contracted_company_count?: number;
+    new_supplier_company_count?: number;
+    new_supplier_rate?: number;
+    lookback_years?: number;
+    completeness?: string;
+  };
+  supplier_concentration?: {
+    status?: string;
+    company_count?: number;
+    contract_event_count?: number;
+    total_contract_amount?: number;
+    top_1_share?: number;
+    top_3_share?: number;
+    top_5_share?: number;
+    amount_completeness?: string;
+  };
+  project_scale?: {
+    status?: string;
+    current_project_amount?: number;
+    current_project_amount_basis?: string;
+    comparison_event_count?: number;
+    median_project_amount?: number;
+    percentile?: number;
+    amount_completeness?: string;
+  };
+  competition?: {
+    status?: string;
+    source_bid_count?: number;
+    overall_average_participant_count?: number;
+    overall_median_participant_count?: number;
+    recent_5_average_participant_count?: number;
+    previous_5_average_participant_count?: number;
+    completeness?: string;
+    completeness_reason?: string | null;
+  };
+  peer_benchmark?: {
+    status?: string;
+    peer_organization_count?: number;
+    supplier_concentration?: {
+      current_value?: number;
+      peer_median?: number;
+      percentile?: number;
+      peer_organization_count?: number;
+      interpretation_allowed?: boolean;
+      minimum_sample_satisfied?: boolean;
+      completeness?: string;
+    };
+    new_supplier_amount_share?: {
+      current_value?: number;
+      peer_median?: number;
+      percentile?: number;
+      new_supplier_contract_amount?: number;
+      total_eligible_contract_amount?: number;
+      new_supplier_company_count?: number;
+      contracted_company_count?: number;
+      interpretation_allowed?: boolean;
+    };
+    competition?: {
+      participant_count_median?: { current_value?: number; peer_median?: number; percentile?: number };
+      single_participant_share?: { current_value?: number; peer_median?: number; percentile?: number };
+      current_bid_count?: number;
+      interpretation_allowed?: boolean;
+      completeness?: string;
+    };
+  };
+  new_supplier_similar_amount_cases?: {
+    status?: string;
+    reference_amount?: number;
+    amount_range?: { minimum_amount?: number; maximum_amount?: number; rule?: string };
+    eligible_case_count?: number;
+    similar_amount_contract_event_count?: number;
+    completeness?: string;
+    items?: Array<{
+      company_number: string;
+      company_name: string;
+      contract_event_id?: string;
+      unified_contract_number?: string;
+      contract_name?: string;
+      bid_notice_id?: string | null;
+      notice_name?: string | null;
+      first_contract_date?: string;
+      attributed_contract_amount?: number;
+      current_notice_amount_difference_rate?: number;
+      entry_classification?: string;
+      notice_linkage?: string;
+      relationship_context?: {
+        organization_code?: string;
+        company_number?: string;
+        contract_event_id?: string;
+        period_from_year?: number;
+        period_to_year?: number;
+        work_type?: string;
+        large_category?: string;
+        middle_category?: string;
+        field_code?: string;
+      };
+    }>;
+  };
+  attention_suppliers?: Array<{
+    company_number: string;
+    company_name: string;
+    contract_event_count?: number;
+    attributed_contract_amount?: number;
+    latest_contract_date?: string;
+    first_contract_date?: string;
+    first_contract_status?: string;
+    attention_reasons?: string[];
+    display_attention_reasons?: string[];
+    attention_reason_evidence?: Record<string, Record<string, unknown>>;
+    relationship_context?: {
+      organization_code?: string;
+      company_number?: string;
+      period_from_year?: number;
+      period_to_year?: number;
+      work_type?: string;
+      large_category?: string;
+      middle_category?: string;
+      field_code?: string;
+    };
+  }>;
+  top_suppliers?: Array<{
+    company_number: string;
+    company_name: string;
+    award_event_count?: number;
+    contract_event_count?: number;
+    attributed_contract_amount?: number;
+    latest_contract_date?: string;
+    active_years?: number[];
+    consecutive_active_years?: number;
+    entry_classification?: string;
+    same_organization_field_contract_count?: number;
+    same_organization_field_contract_amount?: number;
+    other_organization_same_field_contract_count?: number;
+    other_organization_same_field_contract_amount?: number;
+    similar_amount_contract_count?: number;
+    new_supplier_case_count?: number;
+    attention_reasons?: string[];
+  }>;
+  related_past_projects?: Array<{
+    bid_notice_id: string;
+    notice_name: string;
+    notice_kind?: string;
+    notice_lineage_id?: string;
+    lineage_count?: number;
+    root_bid_notice_id?: string;
+    relationship_type?: string;
+    notice_published_at?: string;
+    awarded_company_number?: string | null;
+    awarded_company_name?: string | null;
+    contract_amount?: number | null;
+    contract_date?: string | null;
+  }>;
   data_completeness?: { status?: string; missing_reasons?: string[] };
   registry_version?: string;
 };
@@ -543,30 +700,84 @@ export type BidParticipationContext = {
 export function useBidParticipationContext(noticeId?: string, enabled = true) {
   return useQuery({
     queryKey: ["bid-participation-context-v4", noticeId],
-    queryFn: ({ signal }) => api<BidParticipationContext>(`/bids/${encodeURIComponent(noticeId!)}/participation-context`, { signal }),
+    queryFn: ({ signal }) =>
+      api<BidParticipationContext>(`/bids/${encodeURIComponent(noticeId!)}/participation-context`, {
+        signal,
+      }),
     enabled: Boolean(noticeId) && enabled,
     staleTime: 10 * 60_000,
     retry: false,
   });
 }
 
-export type RelatedProjectFilter = "all" | "similar_amount" | "entry_or_reentering_supplier" | "repeat_supplier";
+export type RelatedProjectFilter =
+  "all" | "similar_amount" | "entry_or_reentering_supplier" | "repeat_supplier";
 export type RelatedProjectsResponse = {
-  items: Array<{ bid_notice_id?: string | null; notice_name: string; notice_published_at?: string | null; contract_event_id?: string; unified_contract_number?: string; project_amount?: number; contract_amount?: number; contract_date?: string; first_contract_date?: string; latest_contract_version_date?: string; contract_version_count?: number; company_number?: string; company_name?: string; contractor_count?: number; contractor_amount_completeness?: string; relationship_status_summary?: "entry_or_reentering" | "repeat" | "mixed"; is_similar_amount?: boolean; supplier_entry_classification?: string; is_repeat_supplier?: boolean; contract_time_relationship_status?: "entry_or_reentering" | "repeat"; contract_time_relationship_status_name?: string; prior_same_organization_field_contract_count?: number; history_period_from?: string; history_period_to?: string; classification_basis?: string; matched_filters?: string[]; contractors?: Array<{ company_number?: string; company_name?: string; attributed_contract_amount?: number; supplier_entry_classification?: string; is_repeat_supplier?: boolean; contract_time_relationship_status?: "entry_or_reentering" | "repeat"; contract_time_relationship_status_name?: string; prior_same_organization_field_contract_count?: number }> }>;
+  items: Array<{
+    bid_notice_id?: string | null;
+    notice_name: string;
+    notice_published_at?: string | null;
+    contract_event_id?: string;
+    unified_contract_number?: string;
+    project_amount?: number;
+    contract_amount?: number;
+    contract_date?: string;
+    first_contract_date?: string;
+    latest_contract_version_date?: string;
+    contract_version_count?: number;
+    company_number?: string;
+    company_name?: string;
+    contractor_count?: number;
+    contractor_amount_completeness?: string;
+    relationship_status_summary?: "entry_or_reentering" | "repeat" | "mixed";
+    is_similar_amount?: boolean;
+    supplier_entry_classification?: string;
+    is_repeat_supplier?: boolean;
+    contract_time_relationship_status?: "entry_or_reentering" | "repeat";
+    contract_time_relationship_status_name?: string;
+    prior_same_organization_field_contract_count?: number;
+    history_period_from?: string;
+    history_period_to?: string;
+    classification_basis?: string;
+    matched_filters?: string[];
+    contractors?: Array<{
+      company_number?: string;
+      company_name?: string;
+      attributed_contract_amount?: number;
+      supplier_entry_classification?: string;
+      is_repeat_supplier?: boolean;
+      contract_time_relationship_status?: "entry_or_reentering" | "repeat";
+      contract_time_relationship_status_name?: string;
+      prior_same_organization_field_contract_count?: number;
+    }>;
+  }>;
   filter_counts: Record<RelatedProjectFilter, number>;
   applied_filter?: { filters?: RelatedProjectFilter[]; operator?: "and" | "or"; total_items?: number };
   pagination: { page: number; page_size: number; total_items: number; total_pages: number };
   analysis_basis?: { organization_code?: string };
   registry_version?: string;
 };
-export function useNoticeRelatedProjects(noticeId?: string, projectFilters: RelatedProjectFilter[] = [], page = 1, enabled = true) {
+export function useNoticeRelatedProjects(
+  noticeId?: string,
+  projectFilters: RelatedProjectFilter[] = [],
+  page = 1,
+  enabled = true,
+) {
   const filterKey = [...projectFilters].sort().join(",");
   return useQuery({
     queryKey: ["notice-related-projects-v5", noticeId, filterKey, page],
     queryFn: ({ signal }) => {
-      const params = new URLSearchParams({ filter_operator: "and", sort: "recent_desc", page: String(page), page_size: "5" });
+      const params = new URLSearchParams({
+        filter_operator: "and",
+        sort: "recent_desc",
+        page: String(page),
+        page_size: "5",
+      });
       projectFilters.forEach((filter) => params.append("project_filters", filter));
-      return api<RelatedProjectsResponse>(`/bids/${encodeURIComponent(noticeId!)}/related-projects?${params.toString()}`, { signal });
+      return api<RelatedProjectsResponse>(
+        `/bids/${encodeURIComponent(noticeId!)}/related-projects?${params.toString()}`,
+        { signal },
+      );
     },
     enabled: Boolean(noticeId) && enabled,
     placeholderData: (previous) => previous,
@@ -603,6 +814,7 @@ export type OrganizationCompanyRelationshipResponse = {
     total_attributed_amount?: number;
     attributed_contract_amount?: number;
   }>;
+  major_fields?: Array<{ code: string; name: string; event_count: number; amount?: number }>;
   events: Array<{
     award_event_id: string;
     bid_notice_id: string;

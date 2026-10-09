@@ -1,11 +1,11 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from time import monotonic
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
-from app.services.teoria_adapter import award, contract, objects_of, opening_participation
+from app.services.teoria_adapter import award, objects_of, opening_participation
 
 router = APIRouter()
 _search_cache: dict[str, tuple[float, dict]] = {}
@@ -24,7 +24,7 @@ async def search_companies(q: str = Query(min_length=2, max_length=100)):
     else:
         # The legacy company-name capability calls an external FSC provider and can
         # take several seconds for broad names. Prefer the indexed procurement DB.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         awards = await teoria_client.execute(
             "search_bid_awards",
             {
@@ -97,6 +97,7 @@ async def search_companies(q: str = Query(min_length=2, max_length=100)):
 @router.get("/discover")
 async def discover_companies(q: str = Query(min_length=2, max_length=100)):
     """Find suppliers from recent awards whose notice title matches a product or field."""
+    now = datetime.now(UTC)
     data = await teoria_client.execute(
         "search_bid_awards",
         {
@@ -161,7 +162,7 @@ async def company_profile(business_number: str, reference_date: date | None = No
     number = "".join(ch for ch in business_number if ch.isdigit())
     profile_result, qualification_result = await asyncio.gather(
         teoria_client.execute("get_company_procurement_profile", {"business_registration_number": number}, max_objects=500, provenance=True),
-        teoria_client.execute("get_company_bid_qualification_profile", {"business_registration_number": number, "reference_date": (reference_date or date.today()).isoformat()}, max_objects=500, provenance=True),
+        teoria_client.execute("get_company_bid_qualification_profile", {"business_registration_number": number, "reference_date": (reference_date or datetime.now(UTC).date()).isoformat()}, max_objects=500, provenance=True),
         return_exceptions=True,
     )
     if isinstance(profile_result, BaseException):
@@ -214,7 +215,6 @@ async def company_procurement_activity(
     page_size: int = Query(default=10, ge=1, le=50),
 ):
     number = "".join(ch for ch in business_number if ch.isdigit())
-    now = datetime.now(timezone.utc)
     if (period_from_year is None) != (period_to_year is None) or (period_from_year is not None and period_from_year > period_to_year):
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     common_filters = {
@@ -294,7 +294,7 @@ async def get_company_procurement_analysis(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     if (period_from_year is None) != (period_to_year is None):
         raise HTTPException(422, detail="시작 연도와 종료 연도를 함께 입력해 주세요.")
     if period_from_year is not None and (period_from_year > period_to_year or period_to_year > current_year):

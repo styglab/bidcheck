@@ -14,17 +14,46 @@ export function PublicLayout() {
         <Link className="logo" to="/" onClick={closeMenu}>
           <span>입찰</span>체크<i>beta</i>
         </Link>
-        <GlobalSearch />
+        {location.pathname !== "/notices" && <GlobalSearch />}
         <nav className={menuOpen ? "is-open" : ""}>
-          <NavLink className={["/notices", "/organizations", "/companies", "/explore"].some((path) => location.pathname.startsWith(path)) ? "active" : ""} to="/notices" onClick={closeMenu}>조달 검색</NavLink>
-          <NavLink className={location.pathname.startsWith("/relations") ? "active" : ""} to="/relations" onClick={closeMenu}>관계 탐색</NavLink>
-          <NavLink to="/mcp" onClick={closeMenu}>MCP</NavLink>
+          <NavLink
+            className={location.pathname.startsWith("/notices") ? "active" : ""}
+            to="/notices"
+            onClick={closeMenu}
+          >
+            공고 탐색
+          </NavLink>
+          <NavLink
+            className={location.pathname.startsWith("/organizations") ? "active" : ""}
+            to="/organizations"
+            onClick={closeMenu}
+          >
+            기관
+          </NavLink>
+          <NavLink
+            className={location.pathname.startsWith("/companies") ? "active" : ""}
+            to="/companies"
+            onClick={closeMenu}
+          >
+            업체
+          </NavLink>
+          <NavLink to="/mcp" onClick={closeMenu}>
+            MCP
+          </NavLink>
         </nav>
         <div className="header-actions">
           <ThemeToggle />
-          <NavLink className="header-contact" to="/contact" onClick={closeMenu}>문의하기</NavLink>
+          <NavLink className="header-contact" to="/contact" onClick={closeMenu}>
+            문의하기
+          </NavLink>
         </div>
-        <button className="mobile-menu" type="button" aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+        <button
+          className="mobile-menu"
+          type="button"
+          aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
           {menuOpen ? <X size={19} /> : <Menu size={19} />}
         </button>
       </header>

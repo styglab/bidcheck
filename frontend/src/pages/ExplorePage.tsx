@@ -149,18 +149,14 @@ export function ExplorePage() {
                       <div className="mt-4 flex gap-3 text-xs">
                         <Link
                           className="font-semibold text-blue-700"
-                          to={`/relations?notice=${encodeURIComponent(notice.id)}`}
+                          to={
+                            notice.organization_code
+                              ? `/organizations/${encodeURIComponent(notice.organization_code)}`
+                              : "/organizations"
+                          }
                         >
-                          주변 관계 탐색
+                          계약업체 구성
                         </Link>
-                        {notice.organization_code && (
-                          <Link
-                            className="text-muted-foreground hover:text-foreground"
-                            to={`/organizations/${encodeURIComponent(notice.organization_code)}`}
-                          >
-                            기관 보기
-                          </Link>
-                        )}
                       </div>
                     </article>
                   ))}

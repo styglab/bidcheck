@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-
 Result = Literal["PASS", "FAIL", "UNKNOWN"]
 Status = Literal["ELIGIBLE", "INELIGIBLE", "REVIEW_REQUIRED"]
 

@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/layout/page-container";
 import { ListPagination } from "@/components/common/list-pagination";
-import { ProcurementSearchTabs } from "@/components/procurement/procurement-search-tabs";
 
 export function NoticesPage() {
   const [params, setParams] = useSearchParams();
@@ -55,9 +54,8 @@ export function NoticesPage() {
   }, [filters.q, selectedWorkType]);
   return (
     <PageContainer className="max-w-7xl">
-      <ProcurementSearchTabs />
       <header className="mb-8">
-        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">공고 조회</p>
+        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">공고 탐색</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           전체 공고를 확인하세요
         </h1>
@@ -145,7 +143,11 @@ export function NoticesPage() {
             }
             type="submit"
           >
-            {noticeQuery.isFetching ? <LoaderCircle className="animate-spin" aria-label="공고 검색 중" /> : "검색"}
+            {noticeQuery.isFetching ? (
+              <LoaderCircle className="animate-spin" aria-label="공고 검색 중" />
+            ) : (
+              "검색"
+            )}
           </Button>
         </form>
       </div>
@@ -186,7 +188,13 @@ export function NoticesPage() {
       <div className="page-table">
         <NoticeTable filters={filters} />
       </div>
-      <ListPagination label="공고 페이지" loading={noticeQuery.isFetching} page={noticeQuery.data?.pagination.page ?? filters.page ?? 1} totalPages={noticeQuery.data?.pagination.total_pages} onChange={(page) => update({ page: String(page) })} />
+      <ListPagination
+        label="공고 페이지"
+        loading={noticeQuery.isFetching}
+        page={noticeQuery.data?.pagination.page ?? filters.page ?? 1}
+        totalPages={noticeQuery.data?.pagination.total_pages}
+        onChange={(page) => update({ page: String(page) })}
+      />
     </PageContainer>
   );
 }

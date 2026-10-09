@@ -28,6 +28,36 @@ Content-Type: application/json
 
 `GET /health`는 인증 없이 상태만 확인한다. `GET /v1/version`은 Runtime 및 Registry 버전을, `GET /v1/capabilities`는 현재 제공되는 Capability와 JSON 입력 스키마를 반환한다. 클라이언트는 입력 스키마를 코드에 복제하기보다 이 discovery 응답을 계약 확인과 호환성 점검에 활용하는 것이 좋다.
 
+## 기관·업체 계약 통계 기준
+
+기관·업체 상세의 계약 통계는 Teoria의 `analyze_organization_procurement_profile`과
+`analyze_company_procurement_profile` 응답을 사용한다. 산정 규칙의 단일 원본은 Teoria
+저장소의 `docs/domains/public_procurement/contract_aggregation.md`이며 입찰체크에서
+별도의 계산식으로 재집계하지 않는다.
+
+클라이언트는 다음 `outcome.analysis_basis` 값을 확인한다.
+
+```json
+{
+  "contract_event_date_basis": "first_contract_date",
+  "contract_amount_basis": "latest_version_at_or_before_period_end",
+  "contract_amount_year_attribution": "first_contract_year",
+  "contract_version_deduplication": "merged_by_contract_event"
+}
+```
+
+- 계약 건수와 연도별 추이는 최초 계약일 기준이다.
+- 조회 종료일 이전 최신 계약 버전의 금액을 최초 계약 연도에 표시한다.
+- 최근 변경일인 `latest_contract_date`를 계약 추이의 연도로 사용하지 않는다.
+- `summary.missing_first_contract_date_count`와 `summary.amount_completeness`를 숨기지
+  않고 불완전한 집계임을 표시한다.
+- 공동수급 금액은 Teoria가 반환한 `attributed_contract_amount`를 사용하며 전체
+  계약금액을 업체마다 중복 합산하지 않는다.
+
+계약 추이와 금액 근처에는 다음 문구를 표시한다.
+
+> 계약 건수는 최초 계약일 기준이며, 금액은 조회 종료일 현재의 최신 계약금액입니다.
+
 ## 입찰체크의 기본 호출 순서
 
 ### 1. 공고 검색

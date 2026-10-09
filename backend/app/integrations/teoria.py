@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from fastapi import HTTPException
@@ -8,7 +8,7 @@ from app.core.config import settings
 
 
 class TeoriaClient:
-    retryable_statuses = {502, 504}
+    retryable_statuses: ClassVar[set[int]] = {502, 504}
 
     def __init__(self) -> None:
         self.base_url = settings.teoria_runtime_url.rstrip("/")
