@@ -238,7 +238,7 @@ export type ProcurementContract = {
   contractor_count?: number;
   contractor_completeness?: string;
 };
-export function useNoticeActivity(noticeId?: string) {
+export function useNoticeActivity(noticeId?: string, enabled = true) {
   return useQuery({
     queryKey: ["notice-activity", noticeId],
     queryFn: ({ signal }) =>
@@ -254,7 +254,7 @@ export function useNoticeActivity(noticeId?: string) {
           data_completeness?: { status?: string; missing_reasons?: string[] };
         };
       }>(`/bids/${encodeURIComponent(noticeId!)}/activity`, { signal }),
-    enabled: Boolean(noticeId),
+    enabled: Boolean(noticeId) && enabled,
     staleTime: 5 * 60_000,
   });
 }
@@ -306,12 +306,12 @@ export type BidRelationshipContext = {
   data_completeness: { status?: string; missing_reasons?: string[] };
   registry_version?: string;
 };
-export function useBidRelationshipContext(noticeId?: string) {
+export function useBidRelationshipContext(noticeId?: string, enabled = true) {
   return useQuery({
     queryKey: ["bid-relationship-context", noticeId],
     queryFn: ({ signal }) =>
       api<BidRelationshipContext>(`/bids/${encodeURIComponent(noticeId!)}/relationship-context`, { signal }),
-    enabled: Boolean(noticeId),
+    enabled: Boolean(noticeId) && enabled,
     staleTime: 10 * 60_000,
   });
 }
@@ -898,9 +898,27 @@ export function useNoticeProjectLineage(noticeId?: string, enabled = true) {
     retry: false,
   });
 }
-type AssessmentResponse = {
-  assessment: Record<string, unknown> | null;
-  requirement_assessments: Array<Record<string, unknown>>;
+export type AssessmentOutcome = "satisfied" | "unsatisfied" | "needs_review";
+export type RequirementAssessment = Record<string, unknown> & {
+  id: string;
+  requirement_id?: string;
+  outcome?: AssessmentOutcome;
+  reason_code?: string;
+  summary?: string;
+  assessment_summary?: string;
+  reasoning_summary?: string;
+};
+export type AssessmentResponse = {
+  assessment:
+    | (Record<string, unknown> & {
+        outcome?: AssessmentOutcome;
+        satisfied_count?: number;
+        unsatisfied_count?: number;
+        needs_review_count?: number;
+        lifecycle_status?: string;
+      })
+    | null;
+  requirement_assessments: RequirementAssessment[];
   evidence: Array<Record<string, unknown>>;
   registry_version?: string;
 };

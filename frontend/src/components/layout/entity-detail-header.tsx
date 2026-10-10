@@ -20,23 +20,39 @@ type Props = {
   title: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
+  divided?: boolean;
 };
 
-export function EntityDetailHeader({ tone, icon, entityLabel, meta, title, actions, children }: Props) {
-  return <header className="border-b pb-5">
-    <div className="flex items-start justify-between gap-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${tones[tone]}`}>{icon}</span>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className={`rounded-md px-2 py-0.5 font-semibold ${badgeTones[tone]}`}>{entityLabel}</span>
-            {meta}
+export function EntityDetailHeader({
+  tone,
+  icon,
+  entityLabel,
+  meta,
+  title,
+  actions,
+  children,
+  divided = true,
+}: Props) {
+  return (
+    <header className={divided ? "border-b pb-5" : undefined}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`grid size-10 shrink-0 place-items-center rounded-lg ${tones[tone]}`}>{icon}</span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className={`rounded-md px-2 py-0.5 font-semibold ${badgeTones[tone]}`}>
+                {entityLabel}
+              </span>
+              {meta}
+            </div>
+            <h1 className="mt-1.5 text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
+              {title}
+            </h1>
+            {children}
           </div>
-          <h1 className="mt-1.5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{title}</h1>
-          {children}
         </div>
+        {actions && <div className="shrink-0 self-start sm:pt-0.5">{actions}</div>}
       </div>
-      {actions && <div className="shrink-0">{actions}</div>}
-    </div>
-  </header>;
+    </header>
+  );
 }

@@ -2,10 +2,17 @@ import { Building2, FileText, Landmark, LoaderCircle, Search, X } from "lucide-r
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGlobalSuggestions } from "@/features/search/api";
+import { cn } from "@/lib/utils";
 
 type Result = { key: string; type: "기관" | "업체" | "공고"; title: string; detail: string; to: string };
 
-export function GlobalSearch() {
+type GlobalSearchProps = {
+  autoFocus?: boolean;
+  className?: string;
+  onSelect?: () => void;
+};
+
+export function GlobalSearch({ autoFocus = false, className, onSelect }: GlobalSearchProps) {
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
@@ -55,15 +62,17 @@ export function GlobalSearch() {
     setOpen(false);
     setInput("");
     setActiveIndex(-1);
+    onSelect?.();
     navigate(result.to);
   };
   const groups = ["기관", "업체", "공고"] as const;
   return (
-    <div className="relative order-4 w-full min-w-0 md:order-none md:w-[min(34vw,28rem)]" ref={rootRef}>
+    <div className={cn("relative min-w-0", className)} ref={rootRef}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <input
           aria-label="공고·기관·업체 검색"
+          autoFocus={autoFocus}
           className="h-10 w-full rounded-xl border bg-background pl-9 pr-9 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:border-blue-400 focus:ring-3 focus:ring-blue-100 dark:focus:ring-blue-950"
           onChange={(event) => {
             setInput(event.target.value);
@@ -87,7 +96,7 @@ export function GlobalSearch() {
           value={input}
         />
         {suggestions.isFetching && query.length >= 2 ? (
-          <LoaderCircle className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-blue-800" />
+          <LoaderCircle className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-blue-800 dark:text-blue-300" />
         ) : input ? (
           <button
             aria-label="검색어 지우기"

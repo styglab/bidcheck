@@ -76,7 +76,7 @@ export function ExplorePage() {
               placeholder="공고명, 기관명, 업체명 검색"
             />
           </div>
-          <Button className="h-12 bg-blue-800 px-6 hover:bg-blue-700">검색</Button>
+          <Button className="h-12 px-6">검색</Button>
         </div>
       </form>
 

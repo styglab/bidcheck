@@ -25,6 +25,16 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     document.documentElement.style.colorScheme = resolvedTheme;
   }, [resolvedTheme]);
 
-  const value = useMemo(() => ({ theme, resolvedTheme, setTheme: (next: Theme) => { setThemeState(next); localStorage.setItem(STORAGE_KEY, next); } }), [theme, resolvedTheme]);
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      setTheme: (next: Theme) => {
+        setThemeState(next);
+        localStorage.setItem(STORAGE_KEY, next);
+      },
+    }),
+    [theme, resolvedTheme],
+  );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

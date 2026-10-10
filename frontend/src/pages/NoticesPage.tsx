@@ -4,10 +4,13 @@ import { useSearchParams } from "react-router-dom";
 import { NoticeTable } from "../features/notices/NoticeTable";
 import { useNotices, type NoticeFilters } from "../features/notices/api";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageContainer } from "@/components/layout/page-container";
+import { AnalysisIndexHeader } from "@/components/layout/analysis-index-header";
 import { ListPagination } from "@/components/common/list-pagination";
+import { EntityDetailToolbar, EntitySectionHeader } from "@/components/common/entity-detail-section";
 
 export function NoticesPage() {
   const [params, setParams] = useSearchParams();
@@ -53,72 +56,45 @@ export function NoticesPage() {
     return () => window.clearTimeout(timer);
   }, [filters.q, selectedWorkType]);
   return (
-    <PageContainer className="max-w-7xl">
-      <header className="mb-8">
-        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">공고 탐색</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          전체 공고를 확인하세요
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          발주 공고를 검색하고 이후 낙찰·계약 결과까지 이어서 확인할 수 있습니다.
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          나라장터 API 제공 범위에 따라 일부 공고는 표시되지 않을 수 있습니다.
-        </p>
-      </header>
-      <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
-        <div className="mb-3 flex flex-wrap gap-2" aria-label="공고 조회 범위">
-          <Button
-            type="button"
-            size="sm"
-            variant={!historyScope ? "default" : "outline"}
-            className="rounded-full px-4"
-            aria-pressed={!historyScope}
-            onClick={() => update({ scope: "" })}
-          >
-            진행 공고
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={historyScope ? "default" : "outline"}
-            className="rounded-full px-4"
-            aria-pressed={historyScope}
-            onClick={() => update({ scope: "all" })}
-          >
-            전체 이력
-          </Button>
-        </div>
-        <div className="mb-4 flex flex-wrap gap-2" aria-label="업무 구분">
-          <Button
-            type="button"
-            size="sm"
-            variant={!draftWorkType ? "default" : "outline"}
-            className="rounded-full px-4"
-            aria-pressed={!draftWorkType}
-            onClick={() => setDraftWorkType(undefined)}
-          >
-            전체
-          </Button>
-          {workTypes.map(([value, label]) => {
-            const selected = draftWorkType === value;
-            return (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={selected ? "default" : "outline"}
-                className="rounded-full px-4"
-                aria-pressed={selected}
-                onClick={() => setDraftWorkType(value)}
-              >
-                {label}
-              </Button>
-            );
-          })}
+    <PageContainer className="max-w-6xl !pt-7 sm:!pt-10">
+      <AnalysisIndexHeader
+        description="공고명과 발주기관을 검색하고 낙찰·계약 결과까지 한 흐름으로 확인할 수 있습니다."
+        label="공고 탐색"
+        title="참여할 공고를 찾아보세요"
+      />
+      <EntityDetailToolbar className="p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <div>
+            <p className="mb-2 text-xs font-semibold text-muted-foreground">조회 범위</p>
+            <div className="flex flex-wrap gap-2" aria-label="공고 조회 범위">
+              <FilterChip selected={!historyScope} onClick={() => update({ scope: "" })}>
+                진행 공고
+              </FilterChip>
+              <FilterChip selected={historyScope} onClick={() => update({ scope: "all" })}>
+                전체 이력
+              </FilterChip>
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold text-muted-foreground">업무 구분</p>
+            <div className="flex flex-wrap gap-2" aria-label="업무 구분">
+              <FilterChip selected={!draftWorkType} onClick={() => setDraftWorkType(undefined)}>
+                전체
+              </FilterChip>
+              {workTypes.map(([value, label]) => (
+                <FilterChip
+                  selected={draftWorkType === value}
+                  key={value}
+                  onClick={() => setDraftWorkType(value)}
+                >
+                  {label}
+                </FilterChip>
+              ))}
+            </div>
+          </div>
         </div>
         <form
-          className="flex gap-2"
+          className="mt-5 flex flex-col gap-2 border-t pt-4 sm:flex-row"
           onSubmit={(event) => {
             event.preventDefault();
             update({ q: keyword.trim(), work_type: draftWorkType ?? "" });
@@ -127,7 +103,7 @@ export function NoticesPage() {
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
             <Input
-              className="h-12 bg-muted/35 pl-11 text-sm"
+              className="h-11 bg-background pl-11 text-sm"
               name="q"
               aria-label="공고 검색"
               value={keyword}
@@ -136,7 +112,7 @@ export function NoticesPage() {
             />
           </div>
           <Button
-            className="h-12 bg-blue-800 px-6 hover:bg-blue-700"
+            className="h-11 px-6 sm:min-w-24"
             disabled={
               noticeQuery.isFetching ||
               (keyword.trim() === (filters.q ?? "") && draftWorkType === selectedWorkType)
@@ -150,42 +126,49 @@ export function NoticesPage() {
             )}
           </Button>
         </form>
-      </div>
-      <div className="mt-8 flex flex-col gap-3 border-b border-border pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <strong className="text-base text-foreground">
-            공고 {noticeQuery.data?.pagination.total_items.toLocaleString() ?? "-"}건
-          </strong>
-          {noticeQuery.isFetching && (
-            <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <LoaderCircle className="animate-spin" size={13} />
-              갱신 중
-            </span>
-          )}
+      </EntityDetailToolbar>
+      <div className="mt-9 border-b pb-4">
+        <EntitySectionHeader
+          title={`공고 ${noticeQuery.data?.pagination.total_items.toLocaleString() ?? "-"}건`}
+          description={
+            historyScope
+              ? "진행 공고와 마감된 과거 공고를 함께 표시합니다."
+              : "현재 접수할 수 있는 공고를 최신 게시순으로 표시합니다."
+          }
+          meta={
+            noticeQuery.isFetching ? (
+              <span className="inline-flex items-center gap-1 text-primary">
+                <LoaderCircle className="size-3.5 animate-spin" /> 갱신 중
+              </span>
+            ) : undefined
+          }
+        />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p className="text-xs">나라장터 API 제공 범위에 따라 일부 공고는 표시되지 않을 수 있습니다.</p>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            {noticeQuery.data && (
+              <span>
+                {(noticeQuery.data.pagination.page - 1) * noticeQuery.data.pagination.page_size + 1}–
+                {Math.min(
+                  noticeQuery.data.pagination.page * noticeQuery.data.pagination.page_size,
+                  noticeQuery.data.pagination.total_items,
+                )}{" "}
+                표시
+              </span>
+            )}
+            <Select value={String(filters.page_size)} onValueChange={(value) => update({ page_size: value })}>
+              <SelectTrigger className="h-9 w-[94px] bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="20">20개씩</SelectItem>
+                <SelectItem value="50">50개씩</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-          {noticeQuery.data && (
-            <span>
-              {(noticeQuery.data.pagination.page - 1) * noticeQuery.data.pagination.page_size + 1}–
-              {Math.min(
-                noticeQuery.data.pagination.page * noticeQuery.data.pagination.page_size,
-                noticeQuery.data.pagination.total_items,
-              )}{" "}
-              표시
-            </span>
-          )}
-          <Select value={String(filters.page_size)} onValueChange={(value) => update({ page_size: value })}>
-            <SelectTrigger className="h-9 w-[94px] bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              <SelectItem value="20">20개씩</SelectItem>
-              <SelectItem value="50">50개씩</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </div>
-      <div className="page-table">
+      <div className="page-table mt-4">
         <NoticeTable filters={filters} />
       </div>
       <ListPagination

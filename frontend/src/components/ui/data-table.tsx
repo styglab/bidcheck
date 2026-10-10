@@ -11,7 +11,10 @@ export function DataTable({ children, className, minWidth = 640 }: DataTableProp
   return (
     <div className={cn("app-data-table-frame", className)}>
       <div className="overflow-x-auto">
-        <table className="app-data-table" style={{ "--data-table-min-width": `${minWidth}px` } as CSSProperties}>
+        <table
+          className="app-data-table"
+          style={{ "--data-table-min-width": `${minWidth}px` } as CSSProperties}
+        >
           {children}
         </table>
       </div>
@@ -20,5 +23,11 @@ export function DataTable({ children, className, minWidth = 640 }: DataTableProp
 }
 
 export function DataTableEmpty({ colSpan, children }: { colSpan: number; children: ReactNode }) {
-  return <tr><td className="app-data-table-empty" colSpan={colSpan}>{children}</td></tr>;
+  return (
+    <tr>
+      <td className="app-data-table-empty" colSpan={colSpan}>
+        {children}
+      </td>
+    </tr>
+  );
 }

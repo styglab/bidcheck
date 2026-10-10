@@ -61,7 +61,7 @@ export function RelationshipAnalysis({
   const visibleEvents = eventPreviewLimit == null ? events : events.slice(0, eventPreviewLimit);
   const totalEvents = eventTotalCount ?? events.length;
   return (
-    <div className={compact ? "mt-7 space-y-8" : "mt-8 space-y-8 rounded-2xl border bg-card p-5 sm:p-6"}>
+    <div className={compact ? "mt-7 space-y-7" : "mt-8 space-y-8 rounded-2xl border bg-card p-5 sm:p-6"}>
       {!compact && (
         <section>
           <p className="text-xs font-semibold text-[var(--brand)]">{eyebrow}</p>
@@ -91,13 +91,13 @@ export function RelationshipAnalysis({
           </dl>
         </section>
       )}
-      <section className="grid gap-8 border-t pt-8 xl:grid-cols-2">
+      <section className={`grid border-t ${compact ? "gap-7 pt-7" : "gap-8 pt-8 xl:grid-cols-2"}`}>
         <div>
           <h3 className="font-bold">거래 추이</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             계약 건수는 최초 계약일 기준이며, 금액은 조회 종료일 현재의 최신 계약금액입니다.
           </p>
-          <div className="mt-3 space-y-3 rounded-2xl border bg-card p-5">
+          <div className="mt-3 space-y-3 rounded-xl border bg-card p-4 sm:p-5">
             {years.map((year) => {
               const item = yearlyActivity.find((row) => row.year === year);
               const amount = item?.attributed_contract_amount ?? item?.total_attributed_amount ?? 0;
@@ -109,7 +109,7 @@ export function RelationshipAnalysis({
                   <span className="text-muted-foreground">{year}</span>
                   <span className="h-2 overflow-hidden rounded-full bg-muted">
                     <span
-                      className="block h-full rounded-full bg-[var(--brand)]"
+                      className="block h-full rounded-full bg-chart-1"
                       style={{ width: `${(amount / maxYearAmount) * 100}%` }}
                     />
                   </span>
@@ -126,7 +126,7 @@ export function RelationshipAnalysis({
         </div>
         <div>
           <h3 className="font-bold">주요 거래 분야</h3>
-          <div className="mt-3 space-y-3 rounded-2xl border bg-card p-5">
+          <div className="mt-3 space-y-3 rounded-xl border bg-card p-4 sm:p-5">
             {fields.map((field) => (
               <div
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 text-sm sm:grid-cols-[minmax(7rem,1fr)_2fr_auto]"
@@ -135,7 +135,7 @@ export function RelationshipAnalysis({
                 <span className="truncate">{field.name}</span>
                 <span className="row-start-2 h-2 overflow-hidden rounded-full bg-muted sm:col-start-2 sm:row-start-1">
                   <span
-                    className="block h-full rounded-full bg-[var(--brand)]"
+                    className="block h-full rounded-full bg-chart-1"
                     style={{ width: `${field.amount != null ? (field.amount / maxFieldAmount) * 100 : 0}%` }}
                   />
                 </span>
@@ -150,14 +150,14 @@ export function RelationshipAnalysis({
           </div>
         </div>
       </section>
-      <section className="border-t pt-8">
+      <section className={`border-t ${compact ? "pt-7" : "pt-8"}`}>
         <h3 className="font-bold">
           관련 공고·계약{" "}
           <span className="ml-1 text-sm font-normal text-muted-foreground">
             {totalEvents.toLocaleString("ko-KR")}건
           </span>
         </h3>
-        <div className="mt-3 divide-y overflow-hidden rounded-2xl border md:hidden">
+        <div className={`mt-3 divide-y overflow-hidden rounded-xl border ${compact ? "block" : "md:hidden"}`}>
           {visibleEvents.map((event) => {
             const first = (event.first_contract_date ?? event.contract_date)?.slice(0, 10);
             const latest = event.latest_contract_version_date?.slice(0, 10) ?? first;
@@ -179,7 +179,7 @@ export function RelationshipAnalysis({
             <p className="p-8 text-center text-sm text-muted-foreground">관련 공고·계약이 없습니다.</p>
           )}
         </div>
-        <DataTable className="mt-3 hidden md:block" minWidth={620}>
+        <DataTable className={`mt-3 ${compact ? "hidden" : "hidden md:block"}`} minWidth={620}>
           <thead>
             <tr>
               <th>공고</th>

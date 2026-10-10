@@ -65,7 +65,8 @@ export type CompanyProfileResponse = {
 export function useCompanyProfile(businessNumber?: string) {
   return useQuery({
     queryKey: ["company-profile", businessNumber],
-    queryFn: ({ signal }) => api<CompanyProfileResponse>(`/companies/${encodeURIComponent(businessNumber!)}/profile`, { signal }),
+    queryFn: ({ signal }) =>
+      api<CompanyProfileResponse>(`/companies/${encodeURIComponent(businessNumber!)}/profile`, { signal }),
     enabled: Boolean(businessNumber),
     staleTime: 30 * 60_000,
   });
@@ -100,7 +101,10 @@ export type CompanyDetailContext = {
     latest_available_year?: number;
   };
   relationships: OntologyObject[];
-  sections: Record<string, { status: "available" | "no_data" | "unavailable" | "error"; completeness?: string; reason?: string }>;
+  sections: Record<
+    string,
+    { status: "available" | "no_data" | "unavailable" | "error"; completeness?: string; reason?: string }
+  >;
   data_availability: Record<string, boolean>;
   sources: string[];
   observed_at?: string;
@@ -114,7 +118,11 @@ export function useCompanyDetailContext(businessNumber?: string, companyName?: s
   if (companyName?.trim()) search.set("company_name", companyName.trim());
   return useQuery({
     queryKey: ["company-detail-context", businessNumber, companyName],
-    queryFn: ({ signal }) => api<CompanyDetailContext>(`/companies/${encodeURIComponent(businessNumber!)}/detail-context?${search}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<CompanyDetailContext>(
+        `/companies/${encodeURIComponent(businessNumber!)}/detail-context?${search}`,
+        { signal },
+      ),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 6 * 60 * 60_000,
     gcTime: 12 * 60 * 60_000,
@@ -152,16 +160,40 @@ export type CompanyActivityResponse = {
   contract_count: number;
   registry_version?: string;
 };
-export function useCompanyActivity(businessNumber?: string, filters: { fromYear?: number; toYear?: number; largeCategory?: string; middleCategory?: string; fieldCode?: string; workType?: string; page?: number; pageSize?: number } = {}, enabled = true) {
-  const search = new URLSearchParams({ page: String(filters.page ?? 1), page_size: String(filters.pageSize ?? 20) });
-  if (filters.fromYear && filters.toYear) { search.set("period_from_year", String(filters.fromYear)); search.set("period_to_year", String(filters.toYear)); }
+export function useCompanyActivity(
+  businessNumber?: string,
+  filters: {
+    fromYear?: number;
+    toYear?: number;
+    largeCategory?: string;
+    middleCategory?: string;
+    fieldCode?: string;
+    workType?: string;
+    query?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+  enabled = true,
+) {
+  const search = new URLSearchParams({
+    page: String(filters.page ?? 1),
+    page_size: String(filters.pageSize ?? 20),
+  });
+  if (filters.fromYear && filters.toYear) {
+    search.set("period_from_year", String(filters.fromYear));
+    search.set("period_to_year", String(filters.toYear));
+  }
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
+  if (filters.query) search.set("query", filters.query);
   return useQuery({
     queryKey: ["company-activity", businessNumber, filters],
-    queryFn: ({ signal }) => api<CompanyActivityResponse>(`/companies/${encodeURIComponent(businessNumber!)}/activity?${search}`, { signal }),
+    queryFn: ({ signal }) =>
+      api<CompanyActivityResponse>(`/companies/${encodeURIComponent(businessNumber!)}/activity?${search}`, {
+        signal,
+      }),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 30 * 60_000,
   });
@@ -171,6 +203,28 @@ export type CompanyProcurementProfile = {
   company: { business_registration_number: string; name: string };
   summary: import("../organizations/api").ProcurementProfileSummary;
   organization_relationships: import("../organizations/api").ProcurementRelationship[];
+  organization_entry?: {
+    target_year: number;
+    period_from: string;
+    period_to: string;
+    lookback_from: string;
+    lookback_to: string;
+    lookback_years: number;
+    basis?: string;
+    first_observed_organization_count: number;
+    reentering_organization_count: number;
+    incumbent_organization_count: number;
+    total_organization_count: number;
+    first_observed_organization_rate: number;
+    reentering_organization_rate?: number;
+    entry_and_reentry_organization_count?: number;
+    entry_and_reentry_rate?: number;
+    history_available_from?: string;
+    history_complete_for_lookback?: boolean;
+    history_complete_for_first_observed?: boolean;
+    minimum_sample_size?: number;
+    sample_sufficient?: boolean;
+  };
   yearly_activity: Array<{
     year: number;
     notice_count: number;
@@ -194,7 +248,12 @@ export type CompanyProcurementProfile = {
     display_code?: string;
     display_name?: string;
     has_children?: boolean;
-    selection_filter?: { work_type?: string | null; large_category?: string | null; middle_category?: string | null; field_code?: string | null };
+    selection_filter?: {
+      work_type?: string | null;
+      large_category?: string | null;
+      middle_category?: string | null;
+      field_code?: string | null;
+    };
     event_count: number;
     participation_count?: number;
     result_confirmed_participation_count?: number;
@@ -205,8 +264,18 @@ export type CompanyProcurementProfile = {
     attributed_contract_amount?: number;
     amount_share?: number;
   }>;
-  work_type_distribution?: Array<{ work_type: string; work_type_name: string; contract_event_count: number; attributed_contract_amount?: number }>;
-  selected_field?: { field_code?: string; field_name?: string; large_category?: string; middle_category?: string };
+  work_type_distribution?: Array<{
+    work_type: string;
+    work_type_name: string;
+    contract_event_count: number;
+    attributed_contract_amount?: number;
+  }>;
+  selected_field?: {
+    field_code?: string;
+    field_name?: string;
+    large_category?: string;
+    middle_category?: string;
+  };
   recent_activity: Array<{
     bid_notice_id: string;
     notice_name: string;
@@ -215,23 +284,65 @@ export type CompanyProcurementProfile = {
     organization_code?: string;
     organization_name?: string;
   }>;
-  analysis_basis: { period_from?: string; period_to?: string; period_years?: number; field_filter?: { large_category?: string; middle_category?: string; field_code?: string; field_name?: string }; work_type?: string; organization_query?: string };
+  analysis_basis: {
+    period_from?: string;
+    period_to?: string;
+    period_years?: number;
+    field_filter?: {
+      large_category?: string;
+      middle_category?: string;
+      field_code?: string;
+      field_name?: string;
+    };
+    work_type?: string;
+    organization_query?: string;
+  };
   data_completeness: { status?: string; missing_reasons?: string[] };
   pagination?: { page: number; page_size: number; total_items: number; total_pages: number };
   registry_version?: string;
 };
-export function useCompanyProcurementProfile(businessNumber?: string, filters: { fromYear?: number; toYear?: number; largeCategory?: string; middleCategory?: string; fieldCode?: string; workType?: string; organizationQuery?: string; page?: number; pageSize?: number } = {}, enabled = true) {
-  const search = new URLSearchParams({ period_years: String(filters.fromYear && filters.toYear ? filters.toYear - filters.fromYear + 1 : 5), page: String(filters.page ?? 1), page_size: String(filters.pageSize ?? 20) });
-  if (filters.fromYear && filters.toYear) { search.set("period_from_year", String(filters.fromYear)); search.set("period_to_year", String(filters.toYear)); }
+export function useCompanyProcurementProfile(
+  businessNumber?: string,
+  filters: {
+    fromYear?: number;
+    toYear?: number;
+    largeCategory?: string;
+    middleCategory?: string;
+    fieldCode?: string;
+    workType?: string;
+    organizationQuery?: string;
+    targetYear?: number;
+    organizationEntryStatus?: "first_observed" | "reentering" | "incumbent";
+    page?: number;
+    pageSize?: number;
+  } = {},
+  enabled = true,
+) {
+  const search = new URLSearchParams({
+    period_years: String(filters.fromYear && filters.toYear ? filters.toYear - filters.fromYear + 1 : 5),
+    page: String(filters.page ?? 1),
+    page_size: String(filters.pageSize ?? 20),
+  });
+  if (filters.fromYear && filters.toYear) {
+    search.set("period_from_year", String(filters.fromYear));
+    search.set("period_to_year", String(filters.toYear));
+  }
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
   if (filters.organizationQuery) search.set("organization_query", filters.organizationQuery);
+  if (filters.targetYear) search.set("target_year", String(filters.targetYear));
+  if (filters.organizationEntryStatus) {
+    search.set("organization_entry_status", filters.organizationEntryStatus);
+  }
   return useQuery({
     queryKey: ["company-procurement-profile", businessNumber, filters],
     queryFn: ({ signal }) =>
-      api<CompanyProcurementProfile>(`/companies/${encodeURIComponent(businessNumber!)}/procurement-profile?${search}`, { signal }),
+      api<CompanyProcurementProfile>(
+        `/companies/${encodeURIComponent(businessNumber!)}/procurement-profile?${search}`,
+        { signal },
+      ),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 10 * 60_000,
     placeholderData: (previous) => previous,
@@ -239,15 +350,46 @@ export function useCompanyProcurementProfile(businessNumber?: string, filters: {
 }
 
 export type CompanyCompetitorsResponse = {
-  items: Array<{ company_number: string; company_name: string; co_participation_count: number; latest_co_participation_date?: string }>;
+  items: Array<{
+    company_number: string;
+    company_name: string;
+    co_participation_count: number;
+    latest_co_participation_date?: string;
+  }>;
   pagination: { page: number; page_size: number; total_items: number; total_pages: number };
   data_completeness?: { status?: string; missing_reasons?: string[] };
 };
-export function useCompanyCompetitors(businessNumber: string | undefined, filters: { fromYear: number; toYear: number; largeCategory?: string; middleCategory?: string; fieldCode?: string; workType?: string }, enabled = true) {
-  const search = new URLSearchParams({ period_from_year: String(filters.fromYear), period_to_year: String(filters.toYear), page: "1", page_size: "5" });
+export function useCompanyCompetitors(
+  businessNumber: string | undefined,
+  filters: {
+    fromYear: number;
+    toYear: number;
+    largeCategory?: string;
+    middleCategory?: string;
+    fieldCode?: string;
+    workType?: string;
+  },
+  enabled = true,
+) {
+  const search = new URLSearchParams({
+    period_from_year: String(filters.fromYear),
+    period_to_year: String(filters.toYear),
+    page: "1",
+    page_size: "5",
+  });
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
-  return useQuery({ queryKey: ["company-competitors", businessNumber, filters], queryFn: ({ signal }) => api<CompanyCompetitorsResponse>(`/companies/${encodeURIComponent(businessNumber!)}/competitors?${search}`, { signal }), enabled: Boolean(businessNumber) && enabled, staleTime: 10 * 60_000, placeholderData: (previous) => previous });
+  return useQuery({
+    queryKey: ["company-competitors", businessNumber, filters],
+    queryFn: ({ signal }) =>
+      api<CompanyCompetitorsResponse>(
+        `/companies/${encodeURIComponent(businessNumber!)}/competitors?${search}`,
+        { signal },
+      ),
+    enabled: Boolean(businessNumber) && enabled,
+    staleTime: 10 * 60_000,
+    placeholderData: (previous) => previous,
+  });
 }

@@ -1,9 +1,18 @@
 import { ArrowDown, ArrowUpRight, LoaderCircle, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import {
+  EntityDetailAction,
+  EntityDetailPanel,
+  EntityMetric,
+  EntityMetricGrid,
+  EntitySectionHeader,
+} from "@/components/common/entity-detail-section";
+import { MetricHelp } from "@/components/common/metric-help";
 import { Button } from "@/components/ui/button";
 import type { ProcurementRelationship } from "@/features/organizations/api";
 import { formatCompactMoney as money } from "@/shared/format/money";
+import { procurementDistributionColor } from "@/shared/ui/procurement-chart-palette";
 
 type CounterpartType = "organization" | "company";
 
@@ -37,6 +46,8 @@ type Props = {
   onSelectRelationship?: (relationship?: ProcurementRelationship) => void;
   relationshipDetail?: ReactNode;
   relationshipDetailLoading?: boolean;
+  className?: string;
+  headingLevel?: 2 | 3;
   getCounterpartHref: (relationship: ProcurementRelationship) => string | undefined;
   onOpenContracts?: (relationship: ProcurementRelationship) => void;
 };
@@ -89,6 +100,8 @@ export function RelationshipTreemap({
   onSelectRelationship,
   relationshipDetail,
   relationshipDetailLoading = false,
+  className,
+  headingLevel = 3,
   getCounterpartHref,
   onOpenContracts,
 }: Props) {
@@ -211,8 +224,7 @@ export function RelationshipTreemap({
   const renderBranch = (item: TreemapBranch): ReactNode => {
     if (item.kind === "leaf") {
       const { entry } = item;
-      const shareTotal = enableDistributionView ? comparisonTotal : knownTotal;
-      const share = shareTotal > 0 && entry.amount > 0 ? entry.amount / shareTotal : undefined;
+      const share = knownTotal > 0 && entry.amount > 0 ? entry.amount / knownTotal : undefined;
       const density = entry.groupedCount
         ? "other"
         : (entry.rank ?? 99) <= 2
@@ -270,42 +282,45 @@ export function RelationshipTreemap({
 
   return (
     <section
-      className="relationship-overview-treemap"
+      className={`relationship-overview-treemap${enableDistributionView ? " is-distribution-view" : ""} ${className ?? ""}`}
       aria-labelledby="relationship-treemap-title"
       ref={sectionRef}
     >
-      <div className="relationship-overview-heading">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight" id="relationship-treemap-title">
-            {title}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-        </div>
-        {!enableDistributionView && contracted.length > 15 && (
-          <Button size="sm" variant="outline" onClick={() => setShowAll((current) => !current)}>
-            {showAll
-              ? "상위 15개만"
-              : `전체 ${Math.min(contracted.length, 50).toLocaleString("ko-KR")}개 보기`}
-            <ArrowDown className={`ml-1 size-3.5 transition-transform ${showAll ? "rotate-180" : ""}`} />
-          </Button>
-        )}
-      </div>
+      <EntitySectionHeader
+        level={headingLevel}
+        headingId="relationship-treemap-title"
+        title={title}
+        description={description}
+        meta={
+          !enableDistributionView && contracted.length > 15 ? (
+            <EntityDetailAction onClick={() => setShowAll((current) => !current)}>
+              {showAll
+                ? "상위 15개만"
+                : `전체 ${Math.min(contracted.length, 50).toLocaleString("ko-KR")}개 보기`}
+              <ArrowDown className={`ml-1 size-3.5 transition-transform ${showAll ? "rotate-180" : ""}`} />
+            </EntityDetailAction>
+          ) : undefined
+        }
+      />
 
       {showMetrics && (
-        <dl className="relationship-overview-metrics">
-          <div>
-            <dt>계약 상대</dt>
-            <dd>{(counterpartCount ?? contracted.length).toLocaleString("ko-KR")}곳</dd>
-          </div>
-          <div>
-            <dt>귀속 계약금액</dt>
-            <dd>{money(totalAmount ?? knownTotal)}</dd>
-          </div>
-          <div>
-            <dt>상위 5개 금액 비중</dt>
-            <dd>{topFiveShare == null ? "-" : `${(topFiveShare * 100).toFixed(1)}%`}</dd>
-          </div>
-        </dl>
+        <EntityMetricGrid className="mt-5 sm:grid-cols-3">
+          <EntityMetric
+            className="border-b sm:border-b-0 sm:border-r sm:px-4"
+            label="계약 상대"
+            value={`${(counterpartCount ?? contracted.length).toLocaleString("ko-KR")}곳`}
+          />
+          <EntityMetric
+            className="border-b sm:border-b-0 sm:border-r sm:px-4"
+            label="귀속 계약금액"
+            value={money(totalAmount ?? knownTotal)}
+          />
+          <EntityMetric
+            className="sm:px-4"
+            label="상위 5개 금액 비중"
+            value={topFiveShare == null ? "-" : `${(topFiveShare * 100).toFixed(1)}%`}
+          />
+        </EntityMetricGrid>
       )}
 
       {enableDistributionView &&
@@ -316,23 +331,28 @@ export function RelationshipTreemap({
           const remainderRatio = Math.max(0, 1 - displayedRatio);
           const remainderCount = Math.max(0, (counterpartCount ?? contracted.length) - entries.length);
           const groups = [
-            { label: "상위 5개", ratio: topFiveRatio, className: "bg-blue-800 dark:bg-blue-500" },
+            { label: "상위 5개", ratio: topFiveRatio, className: procurementDistributionColor.leading },
             {
               label: `6–${entries.length}위`,
               ratio: middleRatio,
-              className: "bg-blue-400 dark:bg-blue-700",
+              className: procurementDistributionColor.middle,
             },
             {
               label: `나머지 ${remainderCount.toLocaleString("ko-KR")}개`,
               ratio: remainderRatio,
-              className: "bg-slate-300 dark:bg-slate-700",
+              className: procurementDistributionColor.remainder,
             },
           ];
           return (
-            <div className="mt-5 rounded-2xl border bg-card p-5">
+            <EntityDetailPanel className="mt-5" muted={false}>
               <div className="mb-3 flex items-center justify-between gap-3">
-                <strong className="text-sm">전체 계약금액 분포</strong>
-                <span className="text-xs text-muted-foreground">전체 계약업체 기준</span>
+                <strong className="flex items-center gap-1 text-sm">
+                  계약금액 분포
+                  <MetricHelp label="계약금액 분포 계산 기준">
+                    금액이 확인된 계약만 합산해 업체별 비중을 계산합니다.
+                  </MetricHelp>
+                </strong>
+                <span className="text-xs text-muted-foreground">선택 조건 기준</span>
               </div>
               <div
                 className="flex h-10 overflow-hidden rounded-lg bg-muted"
@@ -342,7 +362,7 @@ export function RelationshipTreemap({
                   .filter((group) => group.ratio > 0)
                   .map((group) => (
                     <span
-                      className={`grid min-w-0 place-items-center px-2 text-xs font-semibold ${group.className} ${group.label.startsWith("나머지") ? "text-slate-700 dark:text-slate-200" : "text-white"}`}
+                      className={`grid min-w-0 place-items-center px-2 text-xs font-semibold ${group.className} ${group.label.startsWith("나머지") ? "text-foreground" : "text-white"}`}
                       key={group.label}
                       style={{ width: `${group.ratio * 100}%` }}
                     >
@@ -351,29 +371,25 @@ export function RelationshipTreemap({
                   ))}
               </div>
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
-                {groups.map((group) => (
-                  <span key={group.label}>
-                    <span className="text-muted-foreground">{group.label}</span>{" "}
-                    <strong>{(group.ratio * 100).toFixed(1)}%</strong>
-                  </span>
-                ))}
+                {groups
+                  .filter((group) => group.ratio > 0)
+                  .map((group) => (
+                    <span key={group.label}>
+                      <span className="text-muted-foreground">{group.label}</span>{" "}
+                      <strong>{(group.ratio * 100).toFixed(1)}%</strong>
+                    </span>
+                  ))}
               </div>
-            </div>
+            </EntityDetailPanel>
           );
         })()}
 
       {enableDistributionView && knownTotal > 0 && comparisonTotal > 0 && (
-        <div className="mt-6 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h3 className="text-base font-semibold">주요 계약업체 비교</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              누적 50%를 목표로 화면에서 읽을 수 있는 범위까지 표시합니다.
-            </p>
-          </div>
-          <strong className="text-sm">
-            {entries.length.toLocaleString("ko-KR")}개 · 전체의{" "}
-            {((comparisonTotal / knownTotal) * 100).toFixed(1)}%
-          </strong>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <strong>주요 업체 {entries.length.toLocaleString("ko-KR")}개</strong>
+          <span className="text-muted-foreground">
+            전체 계약금액의 {((comparisonTotal / knownTotal) * 100).toFixed(1)}%
+          </span>
         </div>
       )}
       <div
@@ -386,13 +402,6 @@ export function RelationshipTreemap({
       >
         {branch ? renderBranch(branch) : <p>현재 조건에서 확인된 계약 관계가 없습니다.</p>}
       </div>
-      {enableDistributionView && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          타일 면적과 비율은 표시된 계약업체 사이의 상대적 계약금액입니다. 작은 영역은 마우스를 올리면
-          업체명과 금액을 확인할 수 있습니다.
-        </p>
-      )}
-
       {!enableDistributionView && selected && (
         <div className="relationship-inline-summary" aria-live="polite">
           <div>
@@ -435,10 +444,10 @@ export function RelationshipTreemap({
           <aside
             aria-label={`${counterpartName(selected, counterpartType)} 계약 관계 상세`}
             aria-modal="true"
-            className="h-full w-full max-w-5xl overflow-y-auto border-l bg-background p-5 shadow-2xl sm:p-6"
+            className="h-full w-full max-w-xl overflow-y-auto border-l bg-background p-5 shadow-2xl sm:p-6"
             role="dialog"
           >
-            <div className="flex items-start justify-between gap-4 border-b pb-5">
+            <div className="sticky -top-5 z-10 -mx-5 -mt-5 flex items-start justify-between gap-4 border-b bg-background px-5 pb-4 pt-5 sm:-top-6 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-bold">{counterpartName(selected, counterpartType)}</h3>
@@ -460,7 +469,7 @@ export function RelationshipTreemap({
                 )}
               </div>
               <Button
-                aria-label="업체 상세 닫기"
+                aria-label={`${counterpartType === "organization" ? "기관" : "업체"} 상세 닫기`}
                 size="icon"
                 variant="ghost"
                 onClick={() => {
@@ -472,19 +481,25 @@ export function RelationshipTreemap({
               </Button>
             </div>
 
-            <dl className="mt-5 grid grid-cols-2 gap-3">
+            <dl className="mt-5 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl bg-muted/50 p-4">
-                <dt className="text-xs text-muted-foreground">귀속 계약금액</dt>
+                <dt className="text-xs text-muted-foreground">
+                  {counterpartType === "organization" ? "이 기관에서의 계약금액" : "이 업체와의 계약금액"}
+                </dt>
                 <dd className="mt-1 text-lg font-bold">{money(selectedAmount)}</dd>
               </div>
               <div className="rounded-xl bg-muted/50 p-4">
-                <dt className="text-xs text-muted-foreground">조회 조건 내 계약금액 비중</dt>
+                <dt className="flex items-center gap-1 text-xs text-muted-foreground">
+                  전체 계약금액 비중
+                  <MetricHelp label="계약금액 비중 계산 기준">
+                    {counterpartType === "organization"
+                      ? "현재 조회 기간과 분야에서 확인된 이 업체의 전체 귀속 계약금액을 기준으로 계산합니다."
+                      : "현재 조회 기간과 분야에서 확인된 이 기관의 전체 업체 귀속 계약금액을 기준으로 계산합니다."}
+                  </MetricHelp>
+                </dt>
                 <dd className="mt-1 text-lg font-bold">
                   {selectedShare == null ? "-" : `${(selectedShare * 100).toFixed(1)}%`}
                 </dd>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  현재 조회 기간·분야의 전체 업체 귀속 계약금액 기준
-                </p>
               </div>
               <div className="rounded-xl bg-muted/50 p-4">
                 <dt className="text-xs text-muted-foreground">계약 건수</dt>
@@ -492,13 +507,13 @@ export function RelationshipTreemap({
                   {selected.contract_event_count.toLocaleString("ko-KR")}건
                 </dd>
               </div>
-              <div className="rounded-xl bg-muted/50 p-4">
-                <dt className="text-xs text-muted-foreground">최근 계약</dt>
-                <dd className="mt-1 text-sm font-bold">
-                  {selected.latest_contract_date?.slice(0, 10) ?? "일자 미확인"}
-                </dd>
-              </div>
             </dl>
+            <p className="mt-3 text-xs text-muted-foreground">
+              최근 계약일{" "}
+              <strong className="font-semibold text-foreground">
+                {selected.latest_contract_date?.slice(0, 10) ?? "일자 미확인"}
+              </strong>
+            </p>
 
             {relationshipDetailLoading && (
               <div className="mt-7 rounded-xl border p-5" role="status">

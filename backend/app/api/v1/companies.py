@@ -211,6 +211,7 @@ async def company_procurement_activity(
     middle_category: str | None = Query(None, max_length=200),
     field_code: str | None = Query(None, max_length=20),
     work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
+    query: str | None = Query(None, max_length=200),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=50),
 ):
@@ -229,6 +230,7 @@ async def company_procurement_activity(
             "business_registration_number": number,
             **({"period_from_year": period_from_year, "period_to_year": period_to_year} if period_from_year else {}),
             **common_filters,
+            **({"query": query.strip()} if query and query.strip() else {}),
             "page": page,
             "page_size": page_size,
         },
@@ -291,6 +293,11 @@ async def get_company_procurement_analysis(
     field_code: str | None = Query(None, max_length=20),
     work_type: str | None = Query(None, pattern="^(goods|service|construction|foreign|other|unknown)$"),
     organization_query: str | None = Query(None, max_length=200),
+    target_year: int | None = Query(None, ge=2000),
+    organization_entry_status: str | None = Query(
+        None,
+        pattern="^(first_observed|reentering|incumbent)$",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -311,6 +318,8 @@ async def get_company_procurement_analysis(
             **({"field_code": field_code} if field_code else {}),
             **({"work_type": work_type} if work_type else {}),
             **({"organization_query": organization_query.strip()} if organization_query and organization_query.strip() else {}),
+            **({"target_year": target_year} if target_year else {}),
+            **({"organization_entry_status": organization_entry_status} if organization_entry_status else {}),
             "page": page,
             "page_size": page_size,
         },

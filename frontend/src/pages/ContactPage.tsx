@@ -14,10 +14,18 @@ export function ContactPage() {
       <header className="py-6 sm:py-10">
         <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">문의하기</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">무엇을 도와드릴까요?</h1>
-        <p className="mt-3 text-muted-foreground">문의 유형을 선택할 수 있는 접수 채널을 준비하고 있습니다.</p>
+        <p className="mt-3 text-muted-foreground">
+          문의 유형을 선택할 수 있는 접수 채널을 준비하고 있습니다.
+        </p>
       </header>
       <section className="grid gap-4 sm:grid-cols-2">
-        {inquiryTypes.map((item) => <article className="rounded-2xl border bg-card p-6" key={item.title}><item.icon className="size-5 text-blue-700" /><h2 className="mt-4 font-bold">{item.title}</h2><p className="mt-2 text-sm text-muted-foreground">{item.description}</p></article>)}
+        {inquiryTypes.map((item) => (
+          <article className="rounded-2xl border bg-card p-6" key={item.title}>
+            <item.icon className="size-5 text-blue-700 dark:text-blue-300" />
+            <h2 className="mt-4 font-bold">{item.title}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
+          </article>
+        ))}
       </section>
     </PageContainer>
   );

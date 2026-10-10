@@ -2,7 +2,8 @@ import { ArrowUpRight, Building2, LoaderCircle, Search, Sparkles } from "lucide-
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageContainer } from "@/components/layout/page-container";
-import { ProcurementSearchTabs } from "@/components/procurement/procurement-search-tabs";
+import { AnalysisIndexHeader } from "@/components/layout/analysis-index-header";
+import { EntityDetailToolbar, EntitySectionHeader } from "@/components/common/entity-detail-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,83 +46,80 @@ export function CompaniesPage() {
   };
 
   return (
-    <PageContainer className="max-w-7xl">
-      <ProcurementSearchTabs />
-      <header className="mb-8">
-        <p className="text-sm font-semibold text-teal-700 dark:text-teal-300">업체 탐색</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
-          어떤 분야의 업체를 찾고 계신가요?
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          업체명뿐 아니라 필요한 제품이나 사업을 검색해 실제 낙찰 실적이 있는 업체를 찾아보세요.
-        </p>
-      </header>
+    <PageContainer className="max-w-6xl !pt-7 sm:!pt-10">
+      <AnalysisIndexHeader
+        description="업체명뿐 아니라 제품이나 사업 분야를 검색해 실제 낙찰·계약 이력을 확인할 수 있습니다."
+        label="업체 분석"
+        title="조달업체를 분석하세요"
+      />
 
-      <form
-        className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <div className="mb-4 inline-flex rounded-lg bg-muted p-1" role="tablist" aria-label="업체 검색 방식">
-          <button
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "field" ? "bg-background text-teal-700 shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            onClick={() => changeMode("field")}
-            role="tab"
-            aria-selected={mode === "field"}
-            type="button"
+      <EntityDetailToolbar>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <div
+            className="mb-4 inline-flex rounded-lg bg-muted p-1"
+            role="tablist"
+            aria-label="업체 검색 방식"
           >
-            분야·제품으로 찾기
-          </button>
-          <button
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "company" ? "bg-background text-teal-700 shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-            onClick={() => changeMode("company")}
-            role="tab"
-            aria-selected={mode === "company"}
-            type="button"
-          >
-            업체명으로 찾기
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-            <Input
-              className="h-12 bg-muted/35 pl-11"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={
-                mode === "field"
-                  ? "제품 또는 사업 분야를 검색하세요"
-                  : "업체명 또는 사업자등록번호를 검색하세요"
-              }
-              aria-label={mode === "field" ? "분야 및 제품 검색" : "업체명 검색"}
-            />
+            <button
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "field" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => changeMode("field")}
+              role="tab"
+              aria-selected={mode === "field"}
+              type="button"
+            >
+              분야·제품으로 찾기
+            </button>
+            <button
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "company" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => changeMode("company")}
+              role="tab"
+              aria-selected={mode === "company"}
+              type="button"
+            >
+              업체명으로 찾기
+            </button>
           </div>
-          <Button
-            className="h-12 bg-teal-700 px-6 hover:bg-teal-600"
-            disabled={input.trim().length < 2 || activeQuery.isFetching}
-          >
-            {activeQuery.isFetching ? <LoaderCircle className="animate-spin" /> : "검색"}
-          </Button>
-        </div>
-        {mode === "field" && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">예시</span>
-            {examples.map((example) => (
-              <button
-                className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-teal-300 hover:text-teal-700"
-                key={example}
-                onClick={() => submit(example)}
-                type="button"
-              >
-                {example}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+              <Input
+                className="h-11 bg-background pl-11"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder={
+                  mode === "field"
+                    ? "제품 또는 사업 분야를 검색하세요"
+                    : "업체명 또는 사업자등록번호를 검색하세요"
+                }
+                aria-label={mode === "field" ? "분야 및 제품 검색" : "업체명 검색"}
+              />
+            </div>
+            <Button className="h-11 px-6" disabled={input.trim().length < 2 || activeQuery.isFetching}>
+              {activeQuery.isFetching ? <LoaderCircle className="animate-spin" /> : "검색"}
+            </Button>
           </div>
-        )}
-      </form>
+          {mode === "field" && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">예시</span>
+              {examples.map((example) => (
+                <button
+                  className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  key={example}
+                  onClick={() => submit(example)}
+                  type="button"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          )}
+        </form>
+      </EntityDetailToolbar>
 
       {activeQuery.isError && search && (
         <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -133,16 +131,18 @@ export function CompaniesPage() {
         <div className="mt-9 space-y-10">
           {mode === "field" ? (
             <section>
-              <div className="flex items-end justify-between border-b pb-3">
-                <div>
-                  <h2 className="text-lg font-bold">‘{search}’ 관련 실적 업체</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    최근 3년 낙찰 공고의 제목과 업체를 연결한 결과입니다.
-                  </p>
-                </div>
-                {discovery.isFetching && (
-                  <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-                )}
+              <div className="border-b pb-4">
+                <EntitySectionHeader
+                  title={`‘${search}’ 관련 실적 업체`}
+                  description="최근 3년 낙찰 공고의 제목과 업체를 연결한 결과입니다."
+                  meta={
+                    discovery.isFetching ? (
+                      <span className="inline-flex items-center gap-1 text-primary">
+                        <LoaderCircle className="size-3.5 animate-spin" /> 조회 중
+                      </span>
+                    ) : undefined
+                  }
+                />
               </div>
               {discovery.isLoading ? (
                 <div className="mt-4 grid gap-3">
@@ -151,17 +151,17 @@ export function CompaniesPage() {
                   ))}
                 </div>
               ) : (
-                <div className="mt-4 overflow-hidden rounded-2xl border bg-card shadow-sm">
+                <div className="mt-4 overflow-hidden rounded-xl border bg-card">
                   {discovery.data?.items.map((company) => {
                     const award = company.representative_award;
                     return (
                       <article
-                        className="grid gap-3 border-b p-5 last:border-0 hover:bg-teal-50/30 dark:hover:bg-teal-950/10 md:grid-cols-[minmax(190px,1fr)_minmax(260px,1.7fr)_auto] md:items-center"
+                        className="grid gap-3 border-b px-5 py-4 last:border-0 hover:bg-muted/35 md:grid-cols-[minmax(190px,1fr)_minmax(260px,1.7fr)_auto] md:items-center"
                         key={company.business_registration_number}
                       >
                         <div className="min-w-0">
                           <Link
-                            className="group inline-flex max-w-full items-center gap-2 font-bold hover:text-teal-700"
+                            className="group inline-flex max-w-full items-center gap-2 font-bold hover:text-primary"
                             to={`/companies/${company.business_registration_number}?name=${encodeURIComponent(company.name)}`}
                           >
                             <span className="truncate">{company.name}</span>
@@ -178,7 +178,7 @@ export function CompaniesPage() {
                           </span>
                           {award?.bid_notice_id ? (
                             <Link
-                              className="mt-1 block truncate text-sm font-medium hover:text-teal-700 hover:underline"
+                              className="mt-1 block truncate text-sm font-medium hover:text-primary hover:underline"
                               to={`/notices/${encodeURIComponent(award.bid_notice_id)}`}
                             >
                               {award.notice_name}
@@ -214,24 +214,31 @@ export function CompaniesPage() {
             </section>
           ) : (
             <section>
-              <div className="border-b pb-3">
-                <h2 className="text-lg font-bold">‘{search}’ 업체 검색 결과</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  등록된 업체명 또는 사업자등록번호를 기준으로 찾았습니다.
-                </p>
+              <div className="border-b pb-4">
+                <EntitySectionHeader
+                  title={`‘${search}’ 업체 검색 결과`}
+                  description="등록된 업체명 또는 사업자등록번호를 기준으로 찾았습니다."
+                  meta={
+                    names.isFetching ? (
+                      <span className="inline-flex items-center gap-1 text-primary">
+                        <LoaderCircle className="size-3.5 animate-spin" /> 조회 중
+                      </span>
+                    ) : undefined
+                  }
+                />
               </div>
               {names.isLoading ? (
                 <Skeleton className="mt-4 h-24 rounded-xl" />
               ) : (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 overflow-hidden rounded-xl border bg-card">
                   {names.data?.items.map((company) =>
                     company.business_registration_number ? (
                       <Link
-                        className="group flex items-center gap-4 rounded-xl border bg-card p-4 hover:border-teal-300 hover:bg-teal-50/30"
+                        className="group flex items-center gap-4 border-b px-5 py-4 transition-colors last:border-0 hover:bg-muted/35"
                         key={company.id}
                         to={`/companies/${company.business_registration_number}?name=${encodeURIComponent(company.name ?? "업체명 확인 필요")}`}
                       >
-                        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-teal-700">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                           <Building2 size={18} />
                         </span>
                         <span className="min-w-0 flex-1">
@@ -255,8 +262,8 @@ export function CompaniesPage() {
           )}
         </div>
       ) : (
-        <section className="mt-10 rounded-2xl border bg-gradient-to-br from-teal-50/70 to-background p-6 dark:from-teal-950/20 sm:p-8">
-          <span className="grid size-11 place-items-center rounded-xl bg-teal-700 text-white">
+        <section className="mt-10 border-y py-8 sm:py-10">
+          <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary">
             <Sparkles size={19} />
           </span>
           <h2 className="mt-5 text-xl font-bold">이름을 몰라도 업체를 찾을 수 있습니다</h2>
@@ -264,20 +271,20 @@ export function CompaniesPage() {
             필요한 제품이나 사업 분야를 입력하면 관련 낙찰 이력이 있는 업체와 실제 수행 실적을 함께
             보여드립니다. 결과는 품질 평가나 추천이 아닌 공공조달 이력을 기준으로 합니다.
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border bg-background/80 p-4">
+          <div className="mt-6 grid border-y sm:grid-cols-3">
+            <div className="border-b py-4 sm:border-b-0 sm:border-r sm:pr-5">
               <strong className="text-sm">1. 분야 검색</strong>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 제품명이나 수행하려는 사업을 입력합니다.
               </p>
             </div>
-            <div className="rounded-xl border bg-background/80 p-4">
+            <div className="border-b py-4 sm:border-b-0 sm:border-r sm:px-5">
               <strong className="text-sm">2. 실적 비교</strong>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 낙찰 건수·금액·거래기관을 비교합니다.
               </p>
             </div>
-            <div className="rounded-xl border bg-background/80 p-4">
+            <div className="py-4 sm:pl-5">
               <strong className="text-sm">3. 기관 구성 확인</strong>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 업체 상세에서 주요 발주기관의 계약 비중을 확인합니다.

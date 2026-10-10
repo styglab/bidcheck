@@ -1,14 +1,34 @@
 import { ExternalLink, FileText } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { EntityDetailContentSkeleton, EntityDetailLayout } from "@/components/layout/entity-detail-layout";
+import {
+  EntityDetailContentSkeleton,
+  EntityDetailHeaderSkeleton,
+  EntityDetailLayout,
+} from "@/components/layout/entity-detail-layout";
 import { EntityDetailHeader } from "@/components/layout/entity-detail-header";
+import {
+  EntityDetailAction,
+  EntityDetailSection,
+  EntityMetric,
+  EntityMetricGrid,
+  EntityMetricValue,
+  EntitySectionHeader,
+} from "@/components/common/entity-detail-section";
 import { SectionError } from "@/components/common/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListPagination } from "@/components/common/list-pagination";
 import { MetricHelp } from "@/components/common/metric-help";
+import { NoticeRequirementsSection } from "@/features/notices/NoticeRequirementsSection";
+import { NoticeSectionNav, type NoticeSectionNavItem } from "@/features/notices/NoticeSectionNav";
+import {
+  selectPrimaryAward,
+  sortAwardsByLatest,
+  sortContractsByLatest,
+} from "@/features/notices/procurement-result-presentation";
 import { formatCompactMoney, formatExactMoney } from "@/shared/format/money";
 import {
   useBidRelationshipContext,
@@ -51,13 +71,29 @@ const percent = (value?: number | string) =>
   value == null || value === ""
     ? "미제공"
     : `${Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 3 })}%`;
+const remainingDays = (value?: string) => {
+  if (!value) return "-";
+  const deadline = new Date(value).getTime();
+  if (!Number.isFinite(deadline)) return "-";
+  const days = Math.ceil((deadline - Date.now()) / 86_400_000);
+  if (days < 0) return "마감";
+  if (days === 0) return "D-Day";
+  return `D-${days}`;
+};
+const PARTICIPATION_PAGE_SIZE = 20;
 export function NoticeProfilePage() {
   const { noticeId } = useParams();
   const [relatedFilters, setRelatedFilters] = useState<RelatedProjectFilter[]>([]);
   const [relatedPage, setRelatedPage] = useState(1);
+  const [participationPagination, setParticipationPagination] = useState({ noticeId, page: 1 });
+  const participationResultsRef = useRef<HTMLDivElement>(null);
+  const participationPage = participationPagination.noticeId === noticeId ? participationPagination.page : 1;
   const detail = useNotice(noticeId);
-  const activity = useNoticeActivity(noticeId);
-  const relationshipContext = useBidRelationshipContext(noticeId);
+  const shouldLoadActivity = Boolean(
+    detail.data && !["scheduled", "active", "open"].includes(detail.data.notice.status),
+  );
+  const activity = useNoticeActivity(noticeId, shouldLoadActivity);
+  const relationshipContext = useBidRelationshipContext(noticeId, shouldLoadActivity);
   const participationContext = useBidParticipationContext(
     noticeId,
     detail.data?.notice?.is_latest_in_lineage !== false,
@@ -72,7 +108,8 @@ export function NoticeProfilePage() {
   if (detail.isLoading)
     return (
       <EntityDetailLayout fallbackTo="/notices">
-        <EntityDetailContentSkeleton />
+        <EntityDetailHeaderSkeleton />
+        <EntityDetailContentSkeleton variant="notice" />
       </EntityDetailLayout>
     );
   if (detail.isError || !detail.data)
@@ -83,12 +120,18 @@ export function NoticeProfilePage() {
     );
 
   const { notice, requirements, requirement_set: requirementSet } = detail.data;
-  const awards = activity.data?.awards ?? [];
-  const contracts = activity.data?.contracts ?? [];
+  const awards = sortAwardsByLatest(activity.data?.awards ?? []);
+  const contracts = sortContractsByLatest(activity.data?.contracts ?? []);
   const participations = [...(activity.data?.participations ?? [])].sort(
     (left, right) => (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER),
   );
   const participationSummary = activity.data?.participation_summary;
+  const participationTotalPages = Math.ceil(participations.length / PARTICIPATION_PAGE_SIZE);
+  const safeParticipationPage = Math.min(participationPage, Math.max(1, participationTotalPages));
+  const visibleParticipations = participations.slice(
+    (safeParticipationPage - 1) * PARTICIPATION_PAGE_SIZE,
+    safeParticipationPage * PARTICIPATION_PAGE_SIZE,
+  );
   const participationPartial = participationSummary?.data_completeness?.status === "partial";
   const hasContract = contracts.length > 0;
   const hasAward = awards.length > 0;
@@ -110,26 +153,17 @@ export function NoticeProfilePage() {
             : notice.status === "scheduled"
               ? "입찰 예정"
               : notice.status === "active" || notice.status === "open"
-                ? "입찰 진행 중"
+                ? "접수 중"
                 : notice.status === "closed"
                   ? "입찰 마감"
                   : "상태 미상";
   const isBidding = notice.status === "active" || notice.status === "open";
   const projectAmount = notice.allocated_budget ?? notice.estimated_price;
-  const region = requirements.filter((item) => ["region", "participation_region"].includes(item.type));
-  const industries = requirements.filter(
-    (item) => ["industry", "license", "industry_license"].includes(item.type) || item.industry_code,
-  );
-  const industrySummary = Array.from(
-    new Map(industries.map((item) => [item.industry_code || item.title, item])).values(),
-  );
-  const summarizedRequirementIds = new Set([...region, ...industries].map((item) => item.id));
-  const additionalRequirements = requirements.filter((item) => !summarizedRequirementIds.has(item.id));
   const regionState = requirementSet?.requirement_categories?.region;
   const relationshipByCompany = new Map(
     (relationshipContext.data?.participants ?? []).map((item) => [item.business_registration_number, item]),
   );
-  const winner = awards[0];
+  const winner = selectPrimaryAward(awards, participations);
   const winnerContext = winner?.company_number ? relationshipByCompany.get(winner.company_number) : undefined;
   const decision = participationContext.data;
   const currentLifecycleIndex = hasContract
@@ -167,6 +201,19 @@ export function NoticeProfilePage() {
       (index === 3 && hasAward) ||
       (index === 4 && hasContract),
   }));
+  const sectionNavItems: NoticeSectionNavItem[] = isOutcome
+    ? [{ id: "notice-result", label: "낙찰·계약 결과" }]
+    : isCancelled
+      ? !isSuperseded
+        ? [{ id: "participation-requirements", label: "참가 조건" }]
+        : []
+      : isSuperseded
+        ? []
+        : [
+            { id: "participation-requirements", label: "참가 조건" },
+            { id: "notice-analysis", label: "발주 분석" },
+            { id: "related-contracts", label: "관련 이력" },
+          ];
   const scale = decision?.project_scale;
   const peer = decision?.peer_benchmark;
   const peerConcentration = peer?.supplier_concentration;
@@ -350,16 +397,22 @@ export function NoticeProfilePage() {
   const resultContent = (
     <div className="space-y-6">
       <section>
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-xl font-bold">낙찰 정보</h2>
-            <p className="mt-1 text-sm text-muted-foreground">개찰 참여업체의 순위와 낙찰 결과입니다.</p>
-          </div>
-          <strong className="text-sm">
-            {participationSummary?.source_participant_count != null
-              ? `참여 ${participationSummary.source_participant_count.toLocaleString("ko-KR")}개 · 확인 ${participations.length.toLocaleString("ko-KR")}개`
-              : `확인된 업체 ${participations.length.toLocaleString("ko-KR")}개`}
-          </strong>
+        <div
+          className="scroll-mt-[calc(var(--site-header-height,70px)+1rem)]"
+          ref={participationResultsRef}
+          tabIndex={-1}
+        >
+          <EntitySectionHeader
+            title="낙찰 정보"
+            description="개찰 참여업체의 순위와 낙찰 결과입니다."
+            meta={
+              <strong className="text-sm text-foreground">
+                {participationSummary?.source_participant_count != null
+                  ? `참여 ${participationSummary.source_participant_count.toLocaleString("ko-KR")}개 · 확인 ${participations.length.toLocaleString("ko-KR")}개`
+                  : `확인된 업체 ${participations.length.toLocaleString("ko-KR")}개`}
+              </strong>
+            }
+          />
         </div>
         {participations.length > 0 ? (
           <>
@@ -371,7 +424,7 @@ export function NoticeProfilePage() {
                 <span className="text-right">투찰률</span>
                 <span className="text-center">결과</span>
               </div>
-              {participations.map((item) => {
+              {visibleParticipations.map((item) => {
                 const itemAward = awards.find((award) => award.company_number === item.company_number);
                 const resultLabel = itemAward ? "낙찰" : hasAward ? "미낙찰" : "확인 중";
                 return (
@@ -379,7 +432,11 @@ export function NoticeProfilePage() {
                     className={`grid grid-cols-[4rem_minmax(0,1fr)_9rem_7rem_6rem] items-center gap-3 border-t px-4 py-3 text-sm ${item.rank === 1 ? "bg-blue-50/60" : ""}`}
                     key={item.id}
                   >
-                    <strong className={item.rank === 1 ? "text-blue-700" : "text-muted-foreground"}>
+                    <strong
+                      className={
+                        item.rank === 1 ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"
+                      }
+                    >
                       {item.rank != null ? `${item.rank}위` : "-"}
                     </strong>
                     {item.company_number ? (
@@ -398,7 +455,11 @@ export function NoticeProfilePage() {
                     </span>
                     <span className="text-center">
                       <Badge
-                        className={itemAward ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100" : ""}
+                        className={
+                          itemAward
+                            ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                            : ""
+                        }
                         variant={itemAward ? "default" : "secondary"}
                       >
                         {resultLabel}
@@ -409,7 +470,7 @@ export function NoticeProfilePage() {
               })}
             </div>
             <div className="mt-4 divide-y overflow-hidden rounded-xl border sm:hidden">
-              {participations.map((item) => {
+              {visibleParticipations.map((item) => {
                 const itemAward = awards.find((award) => award.company_number === item.company_number);
                 const resultLabel = itemAward ? "낙찰" : hasAward ? "미낙찰" : "확인 중";
                 return (
@@ -418,7 +479,9 @@ export function NoticeProfilePage() {
                       <div className="flex min-w-0 gap-3">
                         <strong
                           className={
-                            item.rank === 1 ? "shrink-0 text-blue-700" : "shrink-0 text-muted-foreground"
+                            item.rank === 1
+                              ? "shrink-0 text-blue-700 dark:text-blue-300"
+                              : "shrink-0 text-muted-foreground"
                           }
                         >
                           {item.rank != null ? `${item.rank}위` : "-"}
@@ -435,7 +498,11 @@ export function NoticeProfilePage() {
                         )}
                       </div>
                       <Badge
-                        className={itemAward ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100" : ""}
+                        className={
+                          itemAward
+                            ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:bg-blue-950/60"
+                            : ""
+                        }
                         variant={itemAward ? "default" : "secondary"}
                       >
                         {resultLabel}
@@ -449,7 +516,7 @@ export function NoticeProfilePage() {
               })}
             </div>
             {participationPartial ? (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                 원천 참여업체 {participationSummary?.source_participant_count.toLocaleString("ko-KR")}개 중{" "}
                 {participationSummary?.returned_participant_count.toLocaleString("ko-KR")}개가 확인되었습니다.
                 누락 업체 정보는 재수집 중입니다.
@@ -459,6 +526,18 @@ export function NoticeProfilePage() {
                 현재 데이터에서 확인 가능한 업체를 표시합니다.
               </p>
             )}
+            <ListPagination
+              label="참여업체 페이지"
+              page={safeParticipationPage}
+              totalPages={participationTotalPages}
+              onChange={(page) => {
+                setParticipationPagination({ noticeId, page });
+                window.requestAnimationFrame(() => {
+                  participationResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  participationResultsRef.current?.focus({ preventScroll: true });
+                });
+              }}
+            />
           </>
         ) : (
           <p className="mt-4 rounded-xl bg-muted/40 p-5 text-sm text-muted-foreground">
@@ -467,20 +546,20 @@ export function NoticeProfilePage() {
         )}
       </section>
       {hasContract && (
-        <section className="border-t pt-8">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold">계약 정보</h2>
-              <p className="mt-1 text-sm text-muted-foreground">최종 계약업체와 계약 결과입니다.</p>
-            </div>
-            {contracts[0]?.detail_url && (
-              <Button asChild size="sm" variant="outline">
-                <a href={contracts[0].detail_url} target="_blank" rel="noreferrer">
-                  계약 원문 <ExternalLink className="ml-1 size-3.5" />
-                </a>
-              </Button>
-            )}
-          </div>
+        <section className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
+          <EntitySectionHeader
+            title="계약 정보"
+            description="최종 계약업체와 계약 결과입니다."
+            meta={
+              contracts[0]?.detail_url ? (
+                <Button asChild size="sm" variant="outline">
+                  <a href={contracts[0].detail_url} target="_blank" rel="noreferrer">
+                    계약 원문 <ExternalLink className="ml-1 size-3.5" />
+                  </a>
+                </Button>
+              ) : undefined
+            }
+          />
           <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
             <div className="grid grid-cols-[minmax(0,1.5fr)_1fr_1fr_1.2fr] gap-3 bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground">
               <span>계약업체</span>
@@ -549,7 +628,7 @@ export function NoticeProfilePage() {
       {winner?.company_number &&
         (winnerContext?.prior_organization_relationship?.contract_event_count ?? 0) > 0 && (
           <section className="rounded-xl border bg-muted/20 p-5">
-            <p className="text-xs font-semibold text-blue-700">이전 계약 이력</p>
+            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">이전 계약 이력</p>
             <p className="mt-2 font-bold">
               {notice.organization} ↔ {winner.company_name}
             </p>
@@ -567,11 +646,11 @@ export function NoticeProfilePage() {
       <EntityDetailHeader
         actions={
           notice.detail_url ? (
-            <Button asChild size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground">
+            <EntityDetailAction asChild>
               <a href={notice.detail_url} target="_blank" rel="noreferrer">
                 나라장터 원문 <ExternalLink className="ml-1 size-3.5" />
               </a>
-            </Button>
+            </EntityDetailAction>
           ) : undefined
         }
         entityLabel="공고"
@@ -579,12 +658,12 @@ export function NoticeProfilePage() {
         meta={
           <span className="inline-flex flex-wrap items-center gap-2">
             <Badge
-              className={`h-5 border-0 px-2 text-[11px] font-semibold leading-none ${isSuperseded ? "bg-amber-100 text-amber-800 hover:bg-amber-100" : isBidding ? "bg-blue-100 text-blue-800 hover:bg-blue-100" : isCancelled ? "bg-red-100 text-red-700 hover:bg-red-100" : "bg-muted text-foreground hover:bg-muted"}`}
+              className={`h-5 border-0 px-2 text-[11px] font-semibold leading-none ${isSuperseded ? "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-950/50" : isBidding ? "bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-950/50" : isCancelled ? "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50" : "bg-muted text-foreground hover:bg-muted"}`}
             >
               {status}
             </Badge>
             {notice.is_re_notice && (
-              <Badge className="h-5 border-0 bg-blue-50 px-2 text-[11px] font-semibold text-blue-800 hover:bg-blue-50">
+              <Badge className="h-5 border-0 bg-blue-50 px-2 text-[11px] font-semibold text-blue-800 hover:bg-blue-50 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-950/50">
                 재공고
               </Badge>
             )}
@@ -606,7 +685,7 @@ export function NoticeProfilePage() {
                 {notice.organization}
               </Link>
               <Link
-                className="text-xs font-medium text-blue-800 hover:underline"
+                className="text-xs font-medium text-blue-800 hover:underline dark:text-blue-300"
                 to={`/organizations/${encodeURIComponent(notice.organization_code)}`}
               >
                 계약업체 구성 보기
@@ -617,7 +696,7 @@ export function NoticeProfilePage() {
           )}
           {!isSuperseded && notice.previous_bid_notice_id && (
             <Link
-              className="text-xs font-medium text-blue-800 hover:underline"
+              className="text-xs font-medium text-blue-800 hover:underline dark:text-blue-300"
               to={`/notices/${encodeURIComponent(notice.previous_bid_notice_id)}`}
             >
               이전 공고 이력
@@ -626,26 +705,37 @@ export function NoticeProfilePage() {
           {(notice.lineage_count ?? 1) > 1 && (
             <span className="text-xs">공고 이력 {notice.lineage_count}건</span>
           )}
+          <span className="text-xs tabular-nums">게시 {date(notice.published_at)}</span>
         </div>
       </EntityDetailHeader>
-      <dl className="mt-6 grid gap-3 sm:grid-cols-4">
+      <EntityMetricGrid className="mt-6 grid-cols-2 sm:grid-cols-4">
         {[
           ["사업금액", exactMoney(projectAmount)],
-          ["경쟁방식", notice.contract_method ?? notice.bid_method ?? "-"],
-          ["게시일", date(notice.published_at)],
-          ["마감일", date(notice.deadline_at)],
+          ["접수마감", dateTime(notice.deadline_at)],
+          ["남은 기간", remainingDays(notice.deadline_at)],
+          ["계약방식", notice.contract_method ?? notice.bid_method ?? "-"],
         ].map(([label, value]) => (
-          <div className="rounded-xl bg-muted/50 p-4" key={label}>
-            <dt className="text-xs text-muted-foreground">{label}</dt>
-            <dd className="mt-1 font-bold">{value}</dd>
-          </div>
+          <EntityMetric
+            className="border-b px-1 even:border-l even:pl-5 [&:nth-child(n+3)]:border-b-0 sm:border-b-0 sm:border-l sm:px-5 sm:first:border-l-0 sm:first:pl-1"
+            key={label}
+            label={label}
+            value={
+              label === "사업금액" && value.includes("\u00a0") ? (
+                <EntityMetricValue value={value.split("\u00a0")[0]} unit={value.split("\u00a0")[1]} />
+              ) : (
+                <span className="text-lg">{value}</span>
+              )
+            }
+          />
         ))}
-      </dl>
+      </EntityMetricGrid>
       <section className="mt-6 border-y py-5" aria-label="공고 진행 상태">
         {isSuperseded ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <strong className="text-sm text-amber-900">이 공고는 재공고로 대체되었습니다.</strong>
+              <strong className="text-sm text-amber-900 dark:text-amber-200">
+                이 공고는 재공고로 대체되었습니다.
+              </strong>
               <p className="mt-1 text-xs text-muted-foreground">
                 일정과 참가 조건은 최신 공고를 기준으로 확인해 주세요.
               </p>
@@ -658,7 +748,9 @@ export function NoticeProfilePage() {
           </div>
         ) : isCancelled ? (
           <div className="flex items-center gap-3">
-            <Badge className="border-0 bg-red-100 text-red-700 hover:bg-red-100">유찰·취소</Badge>
+            <Badge className="border-0 bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50">
+              유찰·취소
+            </Badge>
             <p className="text-sm text-muted-foreground">자세한 사유는 나라장터 원문에서 확인해 주세요.</p>
           </div>
         ) : (
@@ -670,11 +762,11 @@ export function NoticeProfilePage() {
               >
                 {index < lifecycleSteps.length - 1 && (
                   <span
-                    className={`absolute left-[0.4375rem] top-4 h-[calc(100%-0.25rem)] w-0.5 sm:left-1/2 sm:top-2 sm:h-0.5 sm:w-full ${index < currentLifecycleIndex ? "bg-blue-700" : "bg-border"}`}
+                    className={`absolute left-[0.4375rem] top-4 h-[calc(100%-0.25rem)] w-0.5 sm:left-1/2 sm:top-2 sm:h-0.5 sm:w-full ${index < currentLifecycleIndex ? "bg-primary" : "bg-border"}`}
                   />
                 )}
                 <span
-                  className={`absolute left-0 top-0 z-10 flex size-4 items-center justify-center rounded-full border-2 text-[9px] font-bold sm:left-1/2 sm:-translate-x-1/2 ${index === currentLifecycleIndex ? `border-blue-700 ${step.completed ? "bg-blue-700 text-white" : "bg-white text-blue-700"} ring-4 ring-blue-100` : step.completed ? "border-blue-700 bg-blue-700 text-white" : "border-border bg-background text-muted-foreground"}`}
+                  className={`absolute left-0 top-0 z-10 flex size-4 items-center justify-center rounded-full border-2 text-[9px] font-bold sm:left-1/2 sm:-translate-x-1/2 ${index === currentLifecycleIndex ? `border-primary ${step.completed ? "bg-primary text-primary-foreground" : "bg-background text-primary"} ring-4 ring-primary/10` : step.completed ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-muted-foreground"}`}
                 >
                   {step.completed ? "✓" : ""}
                 </span>
@@ -682,7 +774,7 @@ export function NoticeProfilePage() {
                   <strong
                     className={
                       index === currentLifecycleIndex
-                        ? "text-sm text-blue-800"
+                        ? "text-sm text-primary"
                         : step.reached
                           ? "text-sm"
                           : "text-sm text-muted-foreground"
@@ -700,24 +792,47 @@ export function NoticeProfilePage() {
           </ol>
         )}
       </section>
+      {activity.isError && (
+        <div className="mt-6">
+          <SectionError error={activity.error} title="낙찰·계약 정보" onRetry={() => activity.refetch()} />
+        </div>
+      )}
+      {sectionNavItems.length > 1 && <NoticeSectionNav items={sectionNavItems} />}
       {isOutcome ? (
-        <section className="mt-8">{resultContent}</section>
+        <>
+          <section
+            className="scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)] pt-8"
+            id="notice-result"
+          >
+            {resultContent}
+          </section>
+        </>
       ) : (
         <div className="mt-8 flex flex-col">
           {!isOutcome && !isCancelled && !isSuperseded && (
             <>
-              <section className="order-2 mt-10 border-t pt-10">
-                <h2 className="text-xl font-bold">공고 분석</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  과거 계약과 입찰을 기준으로 이번 공고를 비교했습니다.
-                </p>
+              <EntityDetailSection
+                className="order-2 scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)]"
+                divided
+                sectionId="notice-analysis"
+                title="공고 분석"
+                description="과거 계약과 입찰을 기준으로 이번 공고를 비교했습니다."
+              >
                 {participationContext.isLoading ? (
                   <Skeleton className="mt-4 h-64 rounded-xl" />
+                ) : participationContext.isError ? (
+                  <div className="mt-4">
+                    <SectionError
+                      error={participationContext.error}
+                      title="발주 분석"
+                      onRetry={() => participationContext.refetch()}
+                    />
+                  </div>
                 ) : (
                   <div className="mt-6 space-y-8">
                     <div>
                       <h3 className="text-base font-bold">이 기관은 어떤가요?</h3>
-                      <div className="mt-3 border-l-2 border-blue-700 py-1 pl-4">
+                      <div className="mt-3 rounded-xl bg-muted/35 px-4 py-3.5 sm:px-5">
                         <p className="max-w-4xl text-sm font-medium leading-6 text-foreground">
                           {organizationFieldInsight}
                         </p>
@@ -776,7 +891,7 @@ export function NoticeProfilePage() {
                     </div>
                     <div>
                       <h3 className="text-base font-bold">이번 공고는 어떤가요?</h3>
-                      <div className="mt-3 border-l-2 border-blue-700 py-1 pl-4">
+                      <div className="mt-3 rounded-xl bg-muted/35 px-4 py-3.5 sm:px-5">
                         <p className="max-w-4xl text-sm font-medium leading-6 text-foreground">
                           {currentNoticeInsight}
                         </p>
@@ -796,7 +911,7 @@ export function NoticeProfilePage() {
                                 : "-"}
                             </strong>
                             {scaleTopPercent != null && (
-                              <span className="text-sm font-semibold text-blue-800">
+                              <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">
                                 상위 {scaleTopPercent}%
                               </span>
                             )}
@@ -830,30 +945,29 @@ export function NoticeProfilePage() {
                 <p className="mt-3 text-xs text-muted-foreground">
                   과거 데이터에 기반한 참고 정보이며 참여 여부를 판단하지 않습니다.
                 </p>
-              </section>
+              </EntityDetailSection>
 
-              <section className="order-4 mt-10 scroll-mt-24 border-t pt-10" id="related-contracts">
-                <h2 className="text-xl font-bold">동일 분야 계약 이력</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  동일 기관·업무·공식 조달분야에서 확인된 과거 계약입니다.
-                </p>
+              <EntityDetailSection
+                className="order-4 scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)]"
+                divided
+                sectionId="related-contracts"
+                title="동일 분야 계약 이력"
+                description="동일 기관·업무·공식 조달분야에서 확인된 과거 계약입니다."
+              >
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    className="rounded-full"
+                  <FilterChip
                     onClick={() => {
                       setRelatedFilters([]);
                       setRelatedPage(1);
                     }}
-                    size="sm"
-                    variant={relatedFilters.length === 0 ? "default" : "outline"}
+                    selected={relatedFilters.length === 0}
                   >
                     전체 {relatedProjects.data?.filter_counts?.all ?? ""}
-                  </Button>
+                  </FilterChip>
                   {relatedFilterLabels.map(([value, label]) => {
                     const selected = relatedFilters.includes(value);
                     return (
-                      <Button
-                        className="rounded-full"
+                      <FilterChip
                         key={value}
                         onClick={() => {
                           setRelatedFilters((current) =>
@@ -861,14 +975,13 @@ export function NoticeProfilePage() {
                           );
                           setRelatedPage(1);
                         }}
-                        size="sm"
-                        variant={selected ? "default" : "outline"}
+                        selected={selected}
                       >
                         {label}{" "}
                         {relatedProjects.data?.filter_counts?.[value] != null
                           ? relatedProjects.data.filter_counts[value]
                           : ""}
-                      </Button>
+                      </FilterChip>
                     );
                   })}
                 </div>
@@ -883,6 +996,14 @@ export function NoticeProfilePage() {
                 )}
                 {relatedProjects.isLoading ? (
                   <Skeleton className="mt-4 h-64 rounded-xl" />
+                ) : relatedProjects.isError ? (
+                  <div className="mt-4">
+                    <SectionError
+                      error={relatedProjects.error}
+                      title="동일 분야 계약 이력"
+                      onRetry={() => relatedProjects.refetch()}
+                    />
+                  </div>
                 ) : (
                   <>
                     <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
@@ -959,7 +1080,9 @@ export function NoticeProfilePage() {
                           <>
                             <strong className="line-clamp-2 text-sm">{item.notice_name}</strong>
                             {relatedProjectTags(item) && (
-                              <p className="mt-1 text-xs text-blue-800">{relatedProjectTags(item)}</p>
+                              <p className="mt-1 text-xs text-blue-800 dark:text-blue-300">
+                                {relatedProjectTags(item)}
+                              </p>
                             )}
                             {contractVersionLabel(item) && (
                               <p className="mt-1 text-xs text-muted-foreground">
@@ -1020,155 +1143,112 @@ export function NoticeProfilePage() {
                     />
                   </>
                 )}
-              </section>
+              </EntityDetailSection>
 
-              <section className="order-3 mt-10 border-t pt-10">
-                <div className="flex items-center gap-1.5">
-                  <h2 className="text-xl font-bold">주목할 업체</h2>
-                  <MetricHelp label="주목할 업체 선정 기준">
-                    이번 공고와 관련해 확인할 이유가 있는 업체를 유사 규모 경험, 신규·재개 후 반복 거래, 반복
-                    거래, 계약금액, 최근 계약 순으로 선정합니다. 예상 경쟁업체 순위는 아닙니다.
-                  </MetricHelp>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  이번 공고를 검토할 때 함께 확인할 동일 기관·분야의 계약업체입니다.
-                </p>
-                <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)_10rem] gap-3 bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground">
-                    <span>업체</span>
-                    <span>주목할 이유</span>
-                    <span className="text-right">계약 이력</span>
-                  </div>
-                  {attentionSuppliers.map((supplier) => (
-                    <Link
-                      className="grid grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)_10rem] items-center gap-3 border-t px-4 py-3 text-sm hover:bg-muted/40"
-                      key={supplier.company_number}
-                      to={
-                        notice.organization_code
-                          ? `/organizations/${encodeURIComponent(notice.organization_code)}?tab=companies&company=${encodeURIComponent(supplier.company_number)}`
-                          : `/companies/${encodeURIComponent(supplier.company_number)}?name=${encodeURIComponent(supplier.company_name)}`
-                      }
-                    >
-                      <span className="min-w-0">
-                        <strong className="block truncate">{supplier.company_name}</strong>
-                        <small className="mt-1 block text-muted-foreground">
-                          최근 계약 {date(supplier.latest_contract_date)}
-                        </small>
-                      </span>
-                      <span className="flex flex-wrap gap-1.5">
-                        {supplierReasons(supplier).map((reason) => (
-                          <Badge className="border-0" key={reason} variant="secondary">
-                            {reason}
-                          </Badge>
-                        ))}
-                      </span>
-                      <strong className="text-right tabular-nums">
-                        {supplier.contract_event_count ?? 0}건 · {money(supplier.attributed_contract_amount)}
-                      </strong>
-                    </Link>
-                  ))}
-                </div>
-                <div className="mt-4 divide-y overflow-hidden rounded-xl border sm:hidden">
-                  {attentionSuppliers.map((supplier) => (
-                    <Link
-                      className="block p-4 hover:bg-muted/40"
-                      key={supplier.company_number}
-                      to={
-                        notice.organization_code
-                          ? `/organizations/${encodeURIComponent(notice.organization_code)}?tab=companies&company=${encodeURIComponent(supplier.company_number)}`
-                          : `/companies/${encodeURIComponent(supplier.company_number)}?name=${encodeURIComponent(supplier.company_name)}`
-                      }
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <strong className="min-w-0 truncate text-sm">{supplier.company_name}</strong>
-                        <strong className="shrink-0 text-sm tabular-nums">
+              <EntityDetailSection
+                className="order-3"
+                divided
+                title={
+                  <span className="flex items-center gap-1.5">
+                    주목할 업체
+                    <MetricHelp label="주목할 업체 선정 기준">
+                      이번 공고와 관련해 확인할 이유가 있는 업체를 유사 규모 경험, 신규·재개 후 반복 거래,
+                      반복 거래, 계약금액, 최근 계약 순으로 선정합니다. 예상 경쟁업체 순위는 아닙니다.
+                    </MetricHelp>
+                  </span>
+                }
+                description="이번 공고를 검토할 때 함께 확인할 동일 기관·분야의 계약업체입니다."
+              >
+                {!participationContext.isError && (
+                  <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)_10rem] gap-3 bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground">
+                      <span>업체</span>
+                      <span>주목할 이유</span>
+                      <span className="text-right">계약 이력</span>
+                    </div>
+                    {attentionSuppliers.map((supplier) => (
+                      <Link
+                        className="grid grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)_10rem] items-center gap-3 border-t px-4 py-3 text-sm hover:bg-muted/40"
+                        key={supplier.company_number}
+                        to={
+                          notice.organization_code
+                            ? `/organizations/${encodeURIComponent(notice.organization_code)}?tab=companies&company=${encodeURIComponent(supplier.company_number)}`
+                            : `/companies/${encodeURIComponent(supplier.company_number)}?name=${encodeURIComponent(supplier.company_name)}`
+                        }
+                      >
+                        <span className="min-w-0">
+                          <strong className="block truncate">{supplier.company_name}</strong>
+                          <small className="mt-1 block text-muted-foreground">
+                            최근 계약 {date(supplier.latest_contract_date)}
+                          </small>
+                        </span>
+                        <span className="flex flex-wrap gap-1.5">
+                          {supplierReasons(supplier).map((reason) => (
+                            <Badge className="border-0" key={reason} variant="secondary">
+                              {reason}
+                            </Badge>
+                          ))}
+                        </span>
+                        <strong className="text-right tabular-nums">
+                          {supplier.contract_event_count ?? 0}건 ·{" "}
                           {money(supplier.attributed_contract_amount)}
                         </strong>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {supplierReasons(supplier).map((reason) => (
-                          <Badge className="border-0" key={reason} variant="secondary">
-                            {reason}
-                          </Badge>
-                        ))}
-                      </div>
-                      <small className="mt-2 block text-muted-foreground">
-                        계약 {supplier.contract_event_count ?? 0}건 · 최근{" "}
-                        {date(supplier.latest_contract_date)}
-                      </small>
-                    </Link>
-                  ))}
-                </div>
-                {!participationContext.isLoading && !attentionSuppliers.length && (
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {!participationContext.isError && (
+                  <div className="mt-4 divide-y overflow-hidden rounded-xl border sm:hidden">
+                    {attentionSuppliers.map((supplier) => (
+                      <Link
+                        className="block p-4 hover:bg-muted/40"
+                        key={supplier.company_number}
+                        to={
+                          notice.organization_code
+                            ? `/organizations/${encodeURIComponent(notice.organization_code)}?tab=companies&company=${encodeURIComponent(supplier.company_number)}`
+                            : `/companies/${encodeURIComponent(supplier.company_number)}?name=${encodeURIComponent(supplier.company_name)}`
+                        }
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <strong className="min-w-0 truncate text-sm">{supplier.company_name}</strong>
+                          <strong className="shrink-0 text-sm tabular-nums">
+                            {money(supplier.attributed_contract_amount)}
+                          </strong>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {supplierReasons(supplier).map((reason) => (
+                            <Badge className="border-0" key={reason} variant="secondary">
+                              {reason}
+                            </Badge>
+                          ))}
+                        </div>
+                        <small className="mt-2 block text-muted-foreground">
+                          계약 {supplier.contract_event_count ?? 0}건 · 최근{" "}
+                          {date(supplier.latest_contract_date)}
+                        </small>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {participationContext.isError ? (
+                  <div className="mt-4">
+                    <SectionError
+                      error={participationContext.error}
+                      title="주목할 업체"
+                      onRetry={() => participationContext.refetch()}
+                    />
+                  </div>
+                ) : !participationContext.isLoading && !attentionSuppliers.length ? (
                   <p className="mt-4 rounded-xl border p-5 text-sm text-muted-foreground">
                     확인된 주목할 업체가 없습니다.
                   </p>
-                )}
-              </section>
+                ) : null}
+              </EntityDetailSection>
             </>
           )}
 
           {!isSuperseded && (
-            <section className="order-1">
-              <h2 className="text-xl font-bold">참가 조건</h2>
-              <p className="mt-1 text-sm text-muted-foreground">공고에서 확인된 입찰 참가자격입니다.</p>
-              <div className="mt-5 overflow-hidden rounded-xl border">
-                <div
-                  className={`flex flex-wrap items-center gap-2 p-4 ${additionalRequirements.length ? "border-b" : ""}`}
-                >
-                  <span className="text-xs font-semibold text-muted-foreground">지역</span>
-                  {region.length ? (
-                    region.map((item) => (
-                      <Badge className="border-0" variant="secondary" key={item.id}>
-                        {item.title}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm">
-                      {regionState?.applicability === "not_applicable" ||
-                      regionState?.completeness === "complete"
-                        ? "제한 없음"
-                        : "확인 필요"}
-                    </span>
-                  )}
-                  <span className="ml-3 text-xs font-semibold text-muted-foreground">업종·면허</span>
-                  {industrySummary.length ? (
-                    industrySummary.map((item) => (
-                      <Badge
-                        className="border-0 bg-blue-50 text-blue-800"
-                        key={item.industry_code || item.id}
-                      >
-                        {item.title}
-                        {item.industry_code ? ` ${item.industry_code}` : ""}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">확인된 조건 없음</span>
-                  )}
-                </div>
-                {additionalRequirements.length > 0 && (
-                  <div className="divide-y">
-                    {additionalRequirements.slice(0, 10).map((item) => (
-                      <div
-                        className="grid gap-2 p-4 text-sm sm:grid-cols-[minmax(10rem,14rem)_auto_minmax(0,1fr)]"
-                        key={item.id}
-                      >
-                        <strong>{item.title || "추가 조건"}</strong>
-                        <Badge className="h-fit w-fit" variant={item.mandatory ? "default" : "secondary"}>
-                          {item.mandatory ? "필수" : "확인"}
-                        </Badge>
-                        <p className="leading-6 text-muted-foreground">
-                          {item.proposition_text ??
-                            item.evidence_summary ??
-                            item.original_text ??
-                            "세부 조건은 공고 원문에서 확인해야 합니다."}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
+            <NoticeRequirementsSection regionApplicability={regionState} requirements={requirements} />
           )}
         </div>
       )}

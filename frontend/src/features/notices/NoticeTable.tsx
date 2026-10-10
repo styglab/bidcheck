@@ -37,8 +37,24 @@ const statusLabels: Record<string, { label: string; className: string }> = {
     className: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
   },
   open: {
-    label: "진행 중",
+    label: "접수 중",
     className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+  active: {
+    label: "접수 중",
+    className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+  closed: {
+    label: "입찰 마감",
+    className: "bg-muted text-muted-foreground",
+  },
+  cancelled: {
+    label: "유찰·취소",
+    className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
+  },
+  failed: {
+    label: "유찰·취소",
+    className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
   },
   unknown: {
     label: "일정 확인",
@@ -58,7 +74,7 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
     );
   if (query.isError)
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
         <strong>공고를 불러오지 못했습니다.</strong>
         <p className="mt-1">{query.error.message}</p>
         <Button className="mt-4" variant="outline" size="sm" onClick={() => query.refetch()}>
@@ -81,8 +97,8 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
     );
   return (
     <>
-      <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-        <div className="hidden grid-cols-[minmax(320px,1.5fr)_minmax(190px,.8fr)_120px_110px_150px] gap-5 border-b bg-muted/40 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="hidden grid-cols-[minmax(320px,1.5fr)_minmax(190px,.8fr)_120px_110px_150px] gap-5 border-b bg-muted/35 px-5 py-3 text-xs font-semibold text-muted-foreground lg:grid">
           <span>공고</span>
           <span>발주기관</span>
           <span className="text-right">금액</span>
@@ -93,7 +109,7 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
           const deadline = dday(notice.deadline_at);
           return (
             <article
-              className="grid gap-3 border-b px-5 py-4 transition-colors last:border-0 hover:bg-blue-50/35 dark:hover:bg-blue-950/10 lg:grid-cols-[minmax(320px,1.5fr)_minmax(190px,.8fr)_120px_110px_150px] lg:items-center lg:gap-5"
+              className="grid gap-3 border-b px-5 py-4 transition-colors last:border-0 hover:bg-muted/35 lg:grid-cols-[minmax(320px,1.5fr)_minmax(190px,.8fr)_120px_110px_150px] lg:items-center lg:gap-5"
               key={notice.id}
             >
               <div className="min-w-0">
@@ -107,7 +123,7 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
                     {workTypeLabels[notice.work_type] ?? notice.work_type ?? "구분 미상"}
                   </Badge>
                   {notice.is_re_notice && (
-                    <Badge className="h-5 border-0 bg-blue-50 text-[10px] text-blue-800 hover:bg-blue-50">
+                    <Badge className="h-5 border-0 bg-blue-50 text-[10px] text-blue-800 hover:bg-blue-50 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-950/50">
                       재공고{(notice.lineage_count ?? 1) > 1 ? ` · 이력 ${notice.lineage_count}건` : ""}
                     </Badge>
                   )}
@@ -121,7 +137,7 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
                   className="group inline-flex max-w-full items-start gap-1.5"
                   to={`/notices/${encodeURIComponent(notice.id)}`}
                 >
-                  <h2 className="truncate text-[15px] font-semibold group-hover:text-blue-800 group-hover:underline dark:group-hover:text-blue-300">
+                  <h2 className="truncate text-[15px] font-semibold group-hover:text-primary group-hover:underline">
                     {notice.name}
                   </h2>
                   <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
@@ -131,11 +147,11 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
                 <span className="mb-1 block text-[11px] text-muted-foreground lg:hidden">발주기관</span>
                 {notice.organization_code ? (
                   <Link
-                    className="flex items-center gap-1.5 truncate text-sm font-medium hover:text-violet-700 hover:underline dark:hover:text-violet-300"
+                    className="flex items-center gap-1.5 truncate text-sm font-medium hover:text-primary hover:underline"
                     title={notice.organization}
                     to={`/organizations/${encodeURIComponent(notice.organization_code)}`}
                   >
-                    <Building2 size={14} className="shrink-0 text-violet-600" />
+                    <Building2 size={14} className="shrink-0 text-muted-foreground" />
                     {notice.organization}
                   </Link>
                 ) : (
@@ -147,7 +163,9 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
               </div>
               <div className="text-sm lg:text-right">
                 <span className="mr-2 text-[11px] text-muted-foreground lg:hidden">금액</span>
-                <strong className="tabular-nums">{price(notice.allocated_budget)}</strong>
+                <strong className="tabular-nums">
+                  {price(notice.allocated_budget ?? notice.estimated_price)}
+                </strong>
               </div>
               <div className="text-sm">
                 <span className="mr-2 text-[11px] text-muted-foreground lg:hidden">게시일</span>

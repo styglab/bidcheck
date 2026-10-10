@@ -15,12 +15,16 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AppErrorBoundary><ThemeProvider><BrowserRouter>
-          <RouteScrollManager />
-          <CompanyProvider>
-            <App />
-          </CompanyProvider>
-        </BrowserRouter></ThemeProvider></AppErrorBoundary>
+      <AppErrorBoundary>
+        <ThemeProvider>
+          <BrowserRouter>
+            <RouteScrollManager />
+            <CompanyProvider>
+              <App />
+            </CompanyProvider>
+          </BrowserRouter>
+        </ThemeProvider>
+      </AppErrorBoundary>
     </QueryClientProvider>
   </React.StrictMode>,
 );

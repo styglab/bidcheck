@@ -11,7 +11,8 @@ export type GlobalSuggestion = {
 export function useGlobalSuggestions(query: string) {
   return useQuery({
     queryKey: ["global-suggestions", query],
-    queryFn: ({ signal }) => api<GlobalSuggestion>(`/search/suggest?q=${encodeURIComponent(query)}&limit=3`, { signal }),
+    queryFn: ({ signal }) =>
+      api<GlobalSuggestion>(`/search/suggest?q=${encodeURIComponent(query)}&limit=3`, { signal }),
     enabled: query.trim().length >= 2,
     staleTime: 10 * 60_000,
     gcTime: 30 * 60_000,

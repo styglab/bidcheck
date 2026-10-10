@@ -58,7 +58,9 @@ export function LandingPage() {
     <main>
       <section className="home-search-hero border-b">
         <PageContainer className="max-w-5xl py-16 text-center sm:py-24">
-          <Badge className="border-0 bg-blue-100 text-blue-800 hover:bg-blue-100">공공조달 통합검색</Badge>
+          <Badge className="border-0 bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:bg-blue-950/60">
+            공공조달 통합검색
+          </Badge>
           <h1 className="mt-6 text-4xl font-bold tracking-[-0.04em] sm:text-6xl">
             공고·기관·업체를
             <br />
@@ -92,7 +94,7 @@ export function LandingPage() {
                   <LoaderCircle className="absolute right-4 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                 )}
               </div>
-              <Button className="h-12 bg-blue-800 px-6 hover:bg-blue-700">검색</Button>
+              <Button className="h-12 px-6">검색</Button>
             </form>
             {open && searchable && (
               <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-[540px] overflow-y-auto rounded-2xl border bg-popover p-2 shadow-2xl">
@@ -111,7 +113,9 @@ export function LandingPage() {
                             {organization.organization_code}
                           </small>
                         </span>
-                        <span className="text-xs font-semibold text-violet-700">기관 보기</span>
+                        <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
+                          기관 보기
+                        </span>
                       </Link>
                     ))}
                   </ResultGroup>
@@ -134,7 +138,9 @@ export function LandingPage() {
                                 사업자등록번호 {company.business_registration_number}
                               </small>
                             </span>
-                            <span className="text-xs font-semibold text-teal-700">업체 보기</span>
+                            <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">
+                              업체 보기
+                            </span>
                           </Link>
                         ),
                     )}
@@ -154,7 +160,9 @@ export function LandingPage() {
                             {notice.organization} · {money(notice.allocated_budget ?? notice.estimated_price)}
                           </small>
                         </span>
-                        <span className="text-xs font-semibold text-blue-700">공고 보기</span>
+                        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                          공고 보기
+                        </span>
                       </Link>
                     ))}
                   </ResultGroup>
@@ -191,11 +199,11 @@ export function LandingPage() {
       <PageContainer className="max-w-6xl py-14">
         <div className="flex items-end justify-between border-b pb-4">
           <div>
-            <p className="text-sm font-semibold text-blue-800">최근 공고</p>
+            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">최근 공고</p>
             <h2 className="mt-1 text-2xl font-bold">새로 등록된 공고</h2>
           </div>
           <Link
-            className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline dark:text-blue-300"
             to="/notices"
           >
             공고 전체 보기 <ArrowRight size={14} />
@@ -211,7 +219,9 @@ export function LandingPage() {
                 to={`/notices/${encodeURIComponent(notice.id)}`}
                 className="group grid gap-2 p-4 hover:bg-muted/45 sm:grid-cols-[minmax(0,1fr)_14rem_7rem] sm:items-center"
               >
-                <strong className="truncate text-sm group-hover:text-blue-700">{notice.name}</strong>
+                <strong className="truncate text-sm group-hover:text-blue-700 dark:group-hover:text-blue-300">
+                  {notice.name}
+                </strong>
                 <span className="truncate text-xs text-muted-foreground">{notice.organization}</span>
                 <span className="text-right text-xs font-medium">
                   {money(notice.allocated_budget ?? notice.estimated_price)}

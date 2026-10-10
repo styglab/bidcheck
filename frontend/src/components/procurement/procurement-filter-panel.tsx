@@ -1,5 +1,6 @@
 import { LoaderCircle, X } from "lucide-react";
 import { Slider } from "radix-ui";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export type FilterOption = { value?: string; label: string };
@@ -69,15 +70,15 @@ export function ProcurementFilterPanel({
             onValueCommit={onPeriodCommit}
           >
             <Slider.Track className="relative h-1 grow rounded-full bg-muted">
-              <Slider.Range className="absolute h-full rounded-full bg-blue-800 dark:bg-blue-500" />
+              <Slider.Range className="absolute h-full rounded-full bg-primary" />
             </Slider.Track>
             <Slider.Thumb
               aria-label="시작 연도"
-              className="block size-4 rounded-full border-2 border-blue-800 bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-blue-100 focus-visible:ring-3 focus-visible:ring-blue-200 dark:border-blue-500"
+              className="block size-4 rounded-full border-2 border-primary bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-primary/10 focus-visible:ring-3 focus-visible:ring-primary/20"
             />
             <Slider.Thumb
               aria-label="종료 연도"
-              className="block size-4 rounded-full border-2 border-blue-800 bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-blue-100 focus-visible:ring-3 focus-visible:ring-blue-200 dark:border-blue-500"
+              className="block size-4 rounded-full border-2 border-primary bg-background shadow-sm outline-none ring-offset-background transition-shadow hover:ring-3 hover:ring-primary/10 focus-visible:ring-3 focus-visible:ring-primary/20"
             />
           </Slider.Root>
           <div className="mt-1.5 flex justify-between text-[11px] tabular-nums text-muted-foreground">
@@ -105,30 +106,26 @@ export function ProcurementFilterPanel({
         </div>
         <div className="order-2 w-full min-w-0 flex-1 sm:min-w-64">
           <p className="mb-2 text-xs font-medium text-muted-foreground">분야</p>
-          <Select value={fieldValue} onValueChange={onFieldChange} disabled={fieldDisabled}>
-            <SelectTrigger className="h-10 w-full">
-              <SelectValue placeholder={fieldPlaceholder} />
-            </SelectTrigger>
-            <SelectContent position="popper">
-              {fieldOptions.map((option) =>
-                option.value ? (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ) : null,
-              )}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            ariaLabel="분야"
+            disabled={fieldDisabled}
+            emptyMessage="일치하는 분야가 없습니다."
+            onValueChange={onFieldChange}
+            options={fieldOptions}
+            placeholder={fieldPlaceholder}
+            searchPlaceholder="분야명 검색"
+            value={fieldValue}
+          />
         </div>
       </div>
       {appliedFilters.length > 0 && (
         <div
-          className={`${compact ? "mt-3 py-2" : "mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20"} flex flex-wrap items-center gap-2 text-xs`}
+          className={`${compact ? "mt-3 py-2" : "mt-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3"} flex flex-wrap items-center gap-2 text-xs`}
         >
-          <span className="mr-1 font-semibold text-blue-800 dark:text-blue-200">적용 필터</span>
+          <span className="mr-1 font-semibold text-primary">적용 필터</span>
           {appliedFilters.map((filter) => (
             <button
-              className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-background px-3 py-1.5 font-semibold text-blue-800 shadow-sm hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950"
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-background px-3 py-1.5 font-semibold text-primary shadow-sm hover:bg-primary/[0.07]"
               key={filter.key}
               onClick={filter.onRemove}
               type="button"
@@ -138,7 +135,7 @@ export function ProcurementFilterPanel({
             </button>
           ))}
           <button
-            className="ml-auto px-2 py-1.5 font-medium text-blue-800 hover:underline dark:text-blue-200"
+            className="ml-auto px-2 py-1.5 font-medium text-primary hover:underline"
             onClick={onReset}
             type="button"
           >
@@ -148,7 +145,7 @@ export function ProcurementFilterPanel({
       )}
       {isUpdating && (
         <div
-          className={`${compact ? "mt-2" : "mt-4"} flex items-center justify-end gap-1.5 text-xs font-medium text-blue-800 dark:text-blue-300`}
+          className={`${compact ? "mt-2" : "mt-4"} flex items-center justify-end gap-1.5 text-xs font-medium text-primary`}
           role="status"
         >
           <LoaderCircle className="size-3.5 animate-spin" /> 조건 적용 중

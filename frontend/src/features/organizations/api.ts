@@ -89,6 +89,43 @@ export type ProcurementOutcomeCompany = {
   company_role_label?: string;
   share_percent?: number;
 };
+export type ProcurementActivityAward = {
+  award_id?: string;
+  award_date?: string;
+  winner_name?: string;
+  winner_business_registration_number?: string;
+  winning_amount?: number;
+  winning_rate?: number;
+};
+export type ProcurementActivityContract = {
+  contract_event_id?: string;
+  unified_contract_number?: string;
+  first_contract_date?: string;
+  latest_contract_version_date?: string;
+  current_contract_amount?: number;
+  contract_version_count?: number;
+  lead_contractor?: ProcurementOutcomeCompany;
+  contractor_count?: number;
+  contractors?: ProcurementOutcomeCompany[];
+  contract_family_id?: string;
+  contract_series_id?: string | null;
+  contract_structure?: "single" | "long_term_continuing" | "installment" | "unknown";
+  contract_record_type?: "original" | "phase" | "amendment" | "independent" | "unknown";
+  phase_number?: number | null;
+  parent_contract_event_id?: string | null;
+  original_contract_event_id?: string | null;
+  total_contract_amount?: number | null;
+  total_contract_amount_basis?: string | null;
+  phase_contract_amount?: number | null;
+  amount_record_type?: "initial_total" | "current_total" | "phase_amount" | "change_delta" | "unknown";
+  effective_contract_amount?: number | null;
+  is_current_record?: boolean;
+  superseded_by_contract_event_id?: string | null;
+  include_in_family_total?: boolean;
+  amount_tax_basis?: "tax_included" | "tax_excluded" | "unknown";
+  relationship_status?: "confirmed" | "inferred" | "unknown";
+  relationship_basis?: Record<string, unknown> | null;
+};
 export type ProcurementOutcome = {
   outcome_id: string;
   bid_notice_id?: string;
@@ -103,14 +140,7 @@ export type ProcurementOutcome = {
   field_name?: string;
   large_category?: string;
   middle_category?: string;
-  award?: {
-    award_id?: string;
-    award_date?: string;
-    winner_name?: string;
-    winner_business_registration_number?: string;
-    winning_amount?: number;
-    winning_rate?: number;
-  };
+  award?: ProcurementActivityAward;
   contract?: {
     contract_event_id?: string;
     unified_contract_number?: string;
@@ -158,25 +188,47 @@ export function useOrganizationOutcomes(
 
 export type ProcurementActivityStage =
   "all" | "scheduled" | "open" | "closed" | "award" | "contract" | "failed_or_cancelled";
-export type ProcurementActivity = Omit<ProcurementOutcome, "outcome_id" | "stage"> & {
-  activity_id: string;
+export type ProcurementActivityGroup = {
+  activity_group_id: string;
+  bid_notice_id?: string;
+  notice_name?: string;
+  organization_code?: string;
+  organization_name?: string;
   notice_linkage: "linked" | "unlinked";
-  stage: Exclude<ProcurementActivityStage, "all">;
-  project_amount?: number;
-  project_amount_basis?: string;
-  project_amount_basis_name?: string;
+  latest_stage: Exclude<ProcurementActivityStage, "all">;
+  latest_stage_name?: string;
+  latest_activity_date?: string;
+  work_type?: string;
+  field_code?: string;
+  field_name?: string;
+  large_category?: string;
+  middle_category?: string;
   notice?: {
+    notice_name?: string;
     published_at?: string;
     bid_begin_at?: string;
     deadline_at?: string;
     status?: string;
     notice_status?: string;
-    allocated_budget?: number;
-    estimated_price?: number;
-    base_amount?: number;
-    display_amount?: number;
-    display_amount_basis?: string;
-    display_amount_basis_name?: string;
+    work_type?: string;
+    project_amount?: number;
+    project_amount_basis?: string;
+    project_amount_basis_name?: string;
+  };
+  awards: ProcurementActivityAward[];
+  contracts: ProcurementActivityContract[];
+  result_summary: {
+    award_count: number;
+    contract_event_count: number;
+    contract_version_count: number;
+    effective_contract_amount?: number | null;
+    effective_contract_event_id?: string | null;
+    latest_confirmed_contract_amount?: number | null;
+    latest_confirmed_contract_event_id?: string | null;
+    contract_family_count?: number;
+    included_contract_family_count?: number;
+    amount_aggregation_status?: "confirmed" | "partially_confirmed" | "unresolved";
+    amount_aggregation_reason?: string | null;
   };
 };
 export function useOrganizationProcurementActivity(
@@ -204,10 +256,11 @@ export function useOrganizationProcurementActivity(
     queryKey: ["organization-procurement-activity", code, periodRange, page, query, stage, filters],
     queryFn: ({ signal }) =>
       api<{
-        items: ProcurementActivity[];
+        items: ProcurementActivityGroup[];
         stage_counts: Record<ProcurementActivityStage, number>;
         linkage_counts: { linked: number; unlinked: number };
         pagination: { page: number; total_items: number; total_pages: number };
+        truncated?: boolean;
         registry_version?: string;
       }>(`/organizations/${encodeURIComponent(code!)}/procurement-activity?${search}`, { signal }),
     enabled: Boolean(code && periodRange && enabled),
@@ -234,6 +287,13 @@ export type ProcurementRelationship = {
   first_activity_date?: string;
   latest_activity_date?: string;
   latest_contract_date?: string;
+  supplier_entry?: {
+    target_year: number;
+    entry_status: "first_observed" | "reentering" | "incumbent" | string;
+    entry_status_name?: string;
+    previous_contract_date?: string | null;
+    history_complete_for_lookback?: boolean;
+  };
   active_years: number[];
   active_year_count: number;
   yearly_activity: Array<{
@@ -439,6 +499,13 @@ export type OrganizationProcurementProfile = {
       field_name?: string;
     };
     work_type?: string;
+    notice_year_basis?: "notice_published_at" | string;
+    award_year_basis?: "final_award_date_or_opening_at" | string;
+    contract_year_basis?: "first_contract_date" | string;
+    contract_event_date_basis?: "first_contract_date" | string;
+    contract_amount_basis?: "latest_version_at_or_before_period_end" | string;
+    contract_amount_year_attribution?: "first_contract_year" | string;
+    contract_version_deduplication?: "merged_by_contract_event" | string;
   };
   data_completeness: { status?: string; missing_reasons?: string[] };
   registry_version?: string;

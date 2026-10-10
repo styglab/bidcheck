@@ -95,19 +95,30 @@ describe("RelationshipTreemap", () => {
     );
 
     expect(within(view.container).queryByText(/기타 2곳/)).not.toBeInTheDocument();
-    expect(within(view.container).getByText(/1개 · 전체의 30.0%/)).toBeInTheDocument();
+    expect(within(view.container).getByText("주요 업체 1개")).toBeInTheDocument();
+    expect(within(view.container).getByText("전체 계약금액의 30.0%")).toBeInTheDocument();
+    expect(
+      within(view.container).queryByRole("heading", { name: "주요 계약업체 비교" }),
+    ).not.toBeInTheDocument();
     expect(within(view.container).getByText("상위 5개")).toBeInTheDocument();
     expect(within(view.container).getByText("나머지 2개")).toBeInTheDocument();
 
-    await user.click(within(view.container).getByRole("button", { name: /테스트정보기술, 계약 3건/ }));
+    const companyTile = within(view.container).getByRole("button", {
+      name: /테스트정보기술, 계약 3건/,
+    });
+    expect(within(companyTile).getByText("30.0%")).toBeInTheDocument();
+
+    await user.click(companyTile);
 
     expect(
       within(view.container).getByRole("dialog", { name: "테스트정보기술 계약 관계 상세" }),
     ).toBeInTheDocument();
     expect(within(view.container).queryByText("선택 업체")).not.toBeInTheDocument();
-    expect(within(view.container).getByText("조회 조건 내 계약금액 비중")).toBeInTheDocument();
+    expect(within(view.container).getByText("전체 계약금액 비중")).toBeInTheDocument();
+    expect(within(view.container).getByText("30.0%", { selector: "dd" })).toBeInTheDocument();
+    expect(within(view.container).getByText("최근 계약일")).toBeInTheDocument();
     expect(
-      within(view.container).getByText("현재 조회 기간·분야의 전체 업체 귀속 계약금액 기준"),
+      within(view.container).getByRole("button", { name: "계약금액 비중 계산 기준" }),
     ).toBeInTheDocument();
   });
 });
