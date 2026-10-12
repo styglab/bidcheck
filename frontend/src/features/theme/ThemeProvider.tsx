@@ -8,8 +8,12 @@ function systemTheme(): "light" | "dark" {
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+    } catch {
+      return "system";
+    }
   });
   const [system, setSystem] = useState(systemTheme);
   const resolvedTheme = theme === "system" ? system : theme;
@@ -31,7 +35,11 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       resolvedTheme,
       setTheme: (next: Theme) => {
         setThemeState(next);
-        localStorage.setItem(STORAGE_KEY, next);
+        try {
+          localStorage.setItem(STORAGE_KEY, next);
+        } catch {
+          // Keep theme changes usable in memory when browser storage is blocked.
+        }
       },
     }),
     [theme, resolvedTheme],

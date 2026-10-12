@@ -1,3 +1,4 @@
+import { keepPreviousForEntity } from "@/shared/api/query-placeholder";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 export type Notice = {
@@ -11,11 +12,22 @@ export type Notice = {
   large_category?: string;
   middle_category?: string;
   status: string;
+  current_status?: string;
+  current_status_label?: string;
+  bid_status?: string;
+  notice_status?: string;
+  status_confirmed_at?: string;
+  status_source?: string;
+  failure_reason?: string;
+  failure_at?: string;
+  cancellation_reason?: string;
+  cancellation_at?: string;
   organization: string;
   organization_code?: string;
   notice_organization: string;
   notice_organization_code?: string;
   published_at?: string;
+  bid_begin_at?: string;
   deadline_at?: string;
   opening_at?: string;
   bid_method?: string;
@@ -41,7 +53,7 @@ export type Notice = {
   requirement_expression?: RequirementExpression;
 };
 export type RequirementExpression = {
-  operator: "all" | "any" | "leaf";
+  operator: "all" | "any" | "not" | "leaf";
   conditions?: RequirementExpression[];
   requirement_id?: string | null;
 };
@@ -246,6 +258,9 @@ export function useNoticeActivity(noticeId?: string, enabled = true) {
         participations: ProcurementParticipation[];
         awards: ProcurementAward[];
         contracts: ProcurementContract[];
+        relationship_context: BidRelationshipContext;
+        truncated: boolean;
+        contract_pagination?: { page: number; page_size: number; total_items: number; total_pages: number };
         participation_summary?: {
           source_participant_count: number;
           stored_participant_count: number;
@@ -306,229 +321,6 @@ export type BidRelationshipContext = {
   data_completeness: { status?: string; missing_reasons?: string[] };
   registry_version?: string;
 };
-export function useBidRelationshipContext(noticeId?: string, enabled = true) {
-  return useQuery({
-    queryKey: ["bid-relationship-context", noticeId],
-    queryFn: ({ signal }) =>
-      api<BidRelationshipContext>(`/bids/${encodeURIComponent(noticeId!)}/relationship-context`, { signal }),
-    enabled: Boolean(noticeId) && enabled,
-    staleTime: 10 * 60_000,
-  });
-}
-export type NoticeMarketContext = {
-  query_basis: string;
-  signals: Array<{ type: string; label: string; tone: "info" | "relation" | "review" }>;
-  companies: Array<{
-    company_number: string;
-    company_name: string;
-    participation_count: number;
-    award_count: number;
-    contract_count: number;
-    organization_award_count: number;
-    organization_participation_count: number;
-    organization_contract_count: number;
-    organization_contract_amount?: number;
-    organization_latest_activity_date?: string;
-    organization_similar_participation_count: number;
-    organization_similar_award_count: number;
-    organization_similar_contract_count: number;
-    region_status?: "satisfied" | "unsatisfied" | "needs_review" | "unknown" | "not_applicable";
-    industry_license_status?: "satisfied" | "unsatisfied" | "needs_review" | "unknown" | "not_applicable";
-    required_industries?: unknown[];
-    required_licenses?: unknown[];
-    matched_industries?: unknown[];
-    matched_licenses?: unknown[];
-    industry_license_reference_date?: string;
-    signals?: string[];
-    total_amount: number;
-    latest_award_date?: string;
-    notice_ids: string[];
-    activities?: Array<{
-      bid_notice_id: string;
-      notice_name?: string;
-      organization_code?: string;
-      organization_name?: string;
-      participated: boolean;
-      awarded: boolean;
-      contracted: boolean;
-      award_date?: string;
-      notice_published_date?: string;
-      activity_date?: string;
-      opening_rank?: number;
-      bid_amount?: number | string;
-      result?: "awarded" | "not_awarded" | "participation_only" | "contracted";
-      bid_classification_number?: string;
-      rebid_number?: string;
-      unified_contract_number?: string;
-      winning_amount?: number;
-      is_similar_notice?: boolean;
-      is_same_organization?: boolean;
-    }>;
-  }>;
-  similar_notices: Array<
-    ProcurementAward & {
-      similarity_reasons: string[];
-      similarity_score: number;
-      similarity_level?: "high" | "medium" | "low";
-      matched_features?: Record<string, unknown>;
-      relationship_type?: "same_project" | "similar_notice" | "related_candidate";
-      comparison_eligible?: boolean;
-      comparison_exclusion_reasons?: string[];
-    }
-  >;
-  sample_size: number;
-  period_years: number;
-};
-export function useNoticeMarketContext(noticeId?: string, enabled = true) {
-  return useQuery({
-    queryKey: ["notice-market-context", noticeId],
-    queryFn: ({ signal }) =>
-      api<NoticeMarketContext>(`/bids/${encodeURIComponent(noticeId!)}/market-context`, { signal }),
-    enabled: Boolean(noticeId) && enabled,
-    staleTime: 10 * 60_000,
-    retry: false,
-  });
-}
-export type OrganizationFieldCompany = {
-  company_number: string;
-  company_name: string;
-  relationship_group: "organization_field" | "market_similar" | "organization_other";
-  same_organization_award_count: number;
-  same_organization_contract_count: number;
-  same_organization_contract_amount?: number;
-  same_organization_contract_amount_complete: boolean;
-  same_field_award_count: number;
-  same_field_contract_count: number;
-  same_project_type_count: number;
-  similar_amount_count: number;
-  latest_activity_date?: string;
-  matched_factors: string[];
-  sample_notice_ids: string[];
-  same_field_event_count?: number;
-  same_project_type_event_count?: number;
-  similar_amount_event_count?: number;
-  first_award_date?: string;
-  latest_award_date?: string;
-  active_years?: number[];
-  active_year_count?: number;
-  consecutive_active_years?: number;
-  annual_activity?: Array<{
-    year: number;
-    award_event_count: number;
-    attributed_contract_amount?: number;
-    amount_completeness: "complete" | "partial" | "unknown";
-    sole_count: number;
-    consortium_lead_count: number;
-    consortium_member_count: number;
-  }>;
-  same_field_contract_amount?: number;
-  same_field_contract_amount_complete?: boolean;
-  representative_notices?: Array<{
-    notice_id: string;
-    notice_name?: string;
-    awarded_at?: string;
-    amount?: number;
-    project_type?: string;
-    is_similar_amount?: boolean;
-  }>;
-  organization_relationship?: {
-    award_event_count: number;
-    yearly_activity: Array<{
-      year: number;
-      award_event_count: number;
-      attributed_contract_amount?: number;
-      amount_completeness: "complete" | "partial" | "unknown";
-      sole_count: number;
-      consortium_lead_count: number;
-      consortium_member_count: number;
-    }>;
-    total_attributed_contract_amount?: number;
-    amount_completeness: "complete" | "partial" | "unknown";
-  };
-  similar_project_experience?: {
-    candidate_count?: number;
-    event_count: number;
-    strong_event_count?: number;
-    limited_event_count?: number;
-    reference_only_event_count?: number;
-    similar_amount_event_count: number;
-  };
-};
-export type OrganizationFieldCompaniesResponse = {
-  bid_notice_id: string;
-  organization?: { code?: string; name?: string };
-  analysis_basis?: {
-    period_years?: number;
-    period_from?: string;
-    period_to?: string;
-    period_type?: string;
-    work_type?: string;
-    field?: { code?: string; label?: string };
-    industries?: Array<{ code: string; name: string }>;
-    project_type?: { code?: string; label?: string };
-    project_type_label?: string;
-    similar_amount_range?: {
-      reference_amount?: number;
-      minimum_amount?: number;
-      maximum_amount?: number;
-      rule?: string;
-    };
-    observation_started_at?: string;
-  };
-  market_structure?: {
-    award_event_count?: number;
-    company_count?: number;
-    repeat_company_count?: number;
-    single_award_company_count?: number;
-    similar_amount_company_count?: number;
-    top_1_share?: number;
-    top_3_share?: number;
-    top_5_share?: number;
-    company_distribution?: {
-      one?: number;
-      two_to_three?: number;
-      four_to_nine?: number;
-      ten_or_more?: number;
-    };
-  };
-  market_entry?: {
-    definition?: string;
-    classification?: string;
-    observation_started_at?: string;
-    recent_new_entrant_count?: number;
-    recent_years?: Array<{
-      year: number;
-      incumbent_award_count: number;
-      new_entrant_award_count: number;
-      new_entrant_company_count: number;
-    }>;
-    companies?: Array<{
-      company_number: string;
-      company_name: string;
-      first_award_date?: string;
-      representative_notice_id?: string;
-      classification?: string;
-    }>;
-  };
-  organization_field_companies: OrganizationFieldCompany[];
-  market_similar_companies: OrganizationFieldCompany[];
-  organization_other_companies: OrganizationFieldCompany[];
-  policy: Record<string, unknown>;
-  registry_version?: string;
-};
-export function useNoticeOrganizationFieldCompanies(noticeId?: string, enabled = true) {
-  return useQuery({
-    queryKey: ["notice-organization-field-companies", noticeId],
-    queryFn: ({ signal }) =>
-      api<OrganizationFieldCompaniesResponse>(
-        `/bids/${encodeURIComponent(noticeId!)}/organization-field-companies`,
-        { signal },
-      ),
-    enabled: Boolean(noticeId) && enabled,
-    staleTime: 10 * 60_000,
-    retry: false,
-  });
-}
 
 export type BidParticipationContext = {
   analysis_basis?: {
@@ -780,7 +572,8 @@ export function useNoticeRelatedProjects(
       );
     },
     enabled: Boolean(noticeId) && enabled,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["notice-related-projects-v5", noticeId]),
     staleTime: 10 * 60_000,
   });
 }
@@ -864,49 +657,54 @@ export function useNoticeOrganizationCompanyRelationship(
       ),
     enabled: Boolean(noticeId && organizationCode && companyNumber),
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, [
+        "notice-organization-company-relationship",
+        noticeId,
+        organizationCode,
+        companyNumber,
+      ]),
     retry: false,
   });
 }
-export type ProjectLineageResponse = {
-  bid_notice_id: string;
-  items: Array<{
-    relationship_type: string;
-    candidate_relationship_type?: string;
-    predecessor_bid_notice_id: string;
-    successor_bid_notice_id: string;
-    project_stage?: { predecessor?: string[]; successor?: string[] };
-    performing_company_number?: string;
-    performing_company_name?: string;
-    contract_amount?: number;
-    performance_period?: string;
-    confidence?: number;
-    reason_codes?: string[];
-    evidence?: Array<{ source_type?: string; bid_notice_id?: string; original_text?: string }>;
-    confirmation_status?: string;
-  }>;
-  policy?: Record<string, unknown>;
-  registry_version?: string;
-};
-export function useNoticeProjectLineage(noticeId?: string, enabled = true) {
-  return useQuery({
-    queryKey: ["notice-project-lineage", noticeId],
-    queryFn: ({ signal }) =>
-      api<ProjectLineageResponse>(`/bids/${encodeURIComponent(noticeId!)}/project-lineage`, { signal }),
-    enabled: Boolean(noticeId) && enabled,
-    staleTime: 10 * 60_000,
-    retry: false,
-  });
-}
+
 export type AssessmentOutcome = "satisfied" | "unsatisfied" | "needs_review";
 export type RequirementAssessment = Record<string, unknown> & {
   id: string;
   requirement_id?: string;
+  evidence_ids?: string[];
   outcome?: AssessmentOutcome;
   reason_code?: string;
+  required_value_text?: string;
+  evaluated_value_text?: string;
+  evaluator_id?: string;
+  evaluator_version?: string;
+  evaluated_at?: string;
   summary?: string;
   assessment_summary?: string;
   reasoning_summary?: string;
+};
+export type AssessmentEvidence = Record<string, unknown> & {
+  id: string;
+  evidence_kind?: string;
+  source_id?: string;
+  source_operation_id?: string;
+  document_id?: string;
+  observed_value_text?: string;
+  page_number?: number;
+  section?: string;
+  clause?: string;
+  excerpt?: string;
+  source_document?: string;
+  source_type?: string;
+  source_page?: number;
+  source_clause?: string;
+  source_excerpt?: string;
+  source_url?: string;
+  observed_at?: string;
+  observed_at_values?: string[];
+  valid_from?: string;
+  valid_until?: string;
 };
 export type AssessmentResponse = {
   assessment:
@@ -919,25 +717,27 @@ export type AssessmentResponse = {
       })
     | null;
   requirement_assessments: RequirementAssessment[];
-  evidence: Array<Record<string, unknown>>;
+  evidence: AssessmentEvidence[];
   registry_version?: string;
 };
 export function useAssessment(noticeId?: string, businessNumber?: string) {
   return useQuery({
     queryKey: ["assessment", noticeId, businessNumber],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<AssessmentResponse>("/assessments", {
         method: "POST",
         body: JSON.stringify({ notice_id: noticeId, business_registration_number: businessNumber }),
+        signal,
       }),
     enabled: Boolean(noticeId && /^[0-9]{10}$/.test(businessNumber ?? "")),
+    retry: false,
     staleTime: 60_000,
   });
 }
 
 export type AssessmentPreviewIssue = {
   requirement_id?: string;
-  outcome?: "satisfied" | "unsatisfied" | "needs_review";
+  outcome: AssessmentOutcome;
   summary?: string;
 };
 export type KeyOutcome = {
@@ -948,17 +748,18 @@ export type KeyOutcome = {
   needs_review_count: number;
   requirement_ids: string[];
 };
-export type AssessmentPreview = {
-  bid_notice_id: string;
-  status: "completed" | "error";
-  error_code?: string;
-  outcome?: "satisfied" | "unsatisfied" | "needs_review";
-  satisfied_count?: number;
-  unsatisfied_count?: number;
-  needs_review_count?: number;
-  key_outcomes?: Record<string, KeyOutcome>;
-  issues?: AssessmentPreviewIssue[];
-};
+export type AssessmentPreview = { bid_notice_id: string } & (
+  | {
+      status: "completed";
+      outcome: AssessmentOutcome;
+      satisfied_count: number;
+      unsatisfied_count: number;
+      needs_review_count: number;
+      key_outcomes?: Record<string, KeyOutcome>;
+      issues?: AssessmentPreviewIssue[];
+    }
+  | { status: "error"; error_code: string; issues?: never }
+);
 type BatchAssessmentResponse = {
   items: AssessmentPreview[];
   registry_version?: string;
@@ -977,6 +778,7 @@ export function useAssessmentPreviews(noticeIds: string[], businessNumber?: stri
         signal,
       }),
     enabled: Boolean(noticeIds.length && /^[0-9]{10}$/.test(businessNumber ?? "")),
+    retry: false,
     staleTime: 5 * 60_000,
   });
 }

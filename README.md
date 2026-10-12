@@ -43,7 +43,6 @@ docker compose up --build -d
 - `GET /api/v1/companies/{business_number}/profile`: 회사 조달·자격 정보 조회
 - `POST /api/v1/assessments`: 공고와 회사의 참가요건 평가
 - `POST /api/v1/assessments/batch`: 현재 목록 공고의 참가요건 일괄 평가
-- `POST /api/v1/checks`: 단순 지역·면허 조건 판정
 
 공고 데이터는 나라장터 API 제공 범위와 Teoria 수집 시점에 따라 실제 나라장터 화면과 차이가 있을 수 있습니다.
 
@@ -63,3 +62,20 @@ cd backend
 pytest
 ruff check .
 ```
+
+
+브라우저 통합 테스트는 실제 Chromium에서 앱을 실행하고 `/api/v1` 응답을 고정된
+테스트 데이터로 대체합니다. 회사 변경 중 지연 응답, 실제 두 탭 간 회사 해제,
+최신 공고 이동, 저장소 차단, 목록·상세 평가 갱신·실패 표시를 검증합니다. 실제 Teoria 연결을
+확인하는 테스트는 아닙니다.
+
+```bash
+cd frontend
+npm ci
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+
+Playwright는 테스트용 Vite 서버를 `127.0.0.1:4175`에 자동으로 실행합니다.
+해당 포트는 비어 있어야 합니다. 실패 시 trace는 `frontend/test-results`에 생성되며
+생성물은 Git에 포함하지 않습니다.

@@ -35,6 +35,21 @@ Content-Type: application/json
 저장소의 `docs/domains/public_procurement/contract_aggregation.md`이며 입찰체크에서
 별도의 계산식으로 재집계하지 않는다.
 
+업체 참여·성공률과 연도별 참여 카드는 `outcome.participation_analysis.summary` 및
+`yearly_activity`를 사용한다. 참여는 `participation_count`, 그중 낙찰은
+`observed_award_count`, 관측 성공률은 `observed_success_rate × 100`을 소수점 한 자리로
+표시한다. 분자·분모는 `success_rate_numerator`·`success_rate_denominator`를 사용하며,
+`independent_award_event_count`는 별도 낙찰 실적으로 구분한다. 별도 낙찰 건수로
+성공률을 재계산하지 않는다. 계약금액은 기존 `yearly_activity`에서 같은 `year`의
+`attributed_contract_amount`를 연결한다.
+
+수집 중이며 참여가 `null`인 연도는 건수·성공률 대신 `collection_status_label`을
+표시한다. 일부 관측 기록이 있으면 건수·관측 성공률 옆에 수집 상태를 함께 표시한다.
+`null`을 0건이나 `-%`로 바꾸지 않으며, `failed`·`unknown`도 수집 중으로 단정하지 않는다.
+실제로 수집 완료된 0건과 확인된 0%는 그대로 보존한다. 물음표 도움말은
+`participation_analysis.basis`의 개찰 순위·최종 낙찰업체 보존 범위를 사용하고,
+수집 완료도 전체 참여 이력의 완전성을 뜻하지 않음을 설명한다.
+
 클라이언트는 다음 `outcome.analysis_basis` 값을 확인한다.
 
 ```json
@@ -101,6 +116,12 @@ POST /v1/capabilities/search_bid_notices:execute
 `bid_notice` 수를 기준으로 한다. 검색 결과가 없으면 `total_items`와 `total_pages`는 모두 0이다.
 각 정렬은 `bid_notice_id`를 최종 tie-breaker로 사용한다.
 
+공고 상태 표시는 Teoria의 `current_status`를 그대로 사용한다. 값은 `scheduled`,
+`open`, `closed`, `awarded`, `contracted`, `failed`, `cancelled` 중 하나다. 기존
+`bid_status`는 입찰 일정 상태, `notice_status`는 공고 원문의 활성·취소 상태이므로 화면용
+진행 단계로 다시 해석하지 않는다. `failed`와 `cancelled`는 각각 유찰과 취소로 구분해
+표시하고, 제공된 경우 `failure_reason` 또는 `cancellation_reason`을 함께 보여준다.
+
 ```json
 {
   "pagination": {
@@ -137,7 +158,7 @@ POST /v1/capabilities/get_bid_notice:execute
 
 공고 객체에는 공고명, 업무유형, 게시·마감·개찰 시각, 기관, 입찰·계약 방식, 추정가격, 배정예산, 원문 URL와 함께 다음 요건 추출 상태가 포함될 수 있다.
 
-- `requirement_expression`: `all`, `any`, `leaf`로 구성된 참가요건 조건식
+- `requirement_expression`: `all`, `any`, `not`, `leaf`로 구성된 참가요건 조건식
 - `extraction_completeness`: 첨부문서 기반 요건 추출 완전성
 - `requires_review`: 사람의 원문 검토가 필요한지 여부
 
@@ -159,6 +180,13 @@ POST /v1/capabilities/get_bid_requirements:execute
   }
 }
 ```
+
+입찰체크는 `bid_requirement_set`을 요청 공고의 `bid_notice_id`로 선택한다.
+해당 필드가 없으면 명시된 `notice_number`·`notice_order` 쌍을 사용한다. 여러 집합 중
+첫 번째를 선택하지 않으며, 집합 객체가 있는데 요청 공고에 속한 집합을 정확히
+하나 식별할 수 없으면 HTTP 502 (`requirement_set_mismatch`)로 처리한다.
+최신 공고 링크는 명시된 `latest_bid_notice_id` 또는 현재 공고가 최신이라는
+`is_latest_in_lineage=true`에 근거한다. 이력 배열 위치로 최신 공고를 추정하지 않는다.
 
 `bid_requirement` 객체는 요건 유형·연산자·요구값, 원문, 적용 주체, 기준일, 필수 여부, 추출 신뢰도, 표준 판정 규칙 및 문서 근거를 제공한다. 화면에서는 정규화된 판정 결과와 함께 `original_text`, `proposition_text`, `evidence_summary`를 사용자가 확인할 수 있게 표시하는 것을 권장한다.
 
@@ -205,6 +233,38 @@ POST /v1/capabilities/assess_company_bid_eligibility:execute
 
 `needs_review`를 `unsatisfied`로 간주하거나 “입찰 불가”로 단정하면 안 된다. 최종 법적 판단이 아니라 공식 데이터와 추출된 공고요건을 바탕으로 한 의사결정 지원 결과로 표시한다.
 
+### 요건별 평가와 근거 연결
+
+평가 객체의 전송 필드는 Teoria의
+`platform/registries/domains/assessment/runtime_contract.yaml`을 기준으로 한다.
+
+- `requirement_assessment`의 `required_value_text`, `evaluated_value_text`,
+  `reasoning_summary`를 요구값·회사 확인값·판단 요약으로 표시한다.
+- `links.type=requirement_assessment_supported_by_evidence`의 `source`는 요건 평가
+  객체 ID, `target`은 `evidence` 객체 ID다. 입찰체크 adapter는 이 관계로만
+  `requirement_assessments[].evidence_ids`를 구성한다. 배열 순서나 근거 속성의
+  유사성으로 요건에 연결하지 않는다.
+- 근거는 `evidence_kind`, `source_id`, `source_operation_id`, `document_id`,
+  `page_number`, `section`, `clause`, `excerpt`, `observed_value_text`,
+  `observed_at`, `valid_from`, `valid_until`을 제공할 수 있다.
+- `observed_at`이 있으면 이 관찰시각을 우선한다. 없으면 `kind=source`인 provenance의
+  관찰시각을 `observed_at_values`로 전달한다. 평가 실행시각을 원천 관찰시각으로
+  대체하지 않는다. 누락된 기준일·유효기간은 확인 필요로 표시한다.
+- 상세 평가 응답은 전체 평가 객체가 정확히 하나이며 요청 공고 ID·사업자등록번호와
+  일치해야 한다. 각 요건 평가의 `assessment_id`는 전체 평가의 Runtime 객체 ID와,
+  사업자등록번호는 요청 회사와 일치해야 한다. 전체 평가 속성의 `assessment_id`
+  지문과 Runtime 객체 ID를 혼동하지 않는다. 소속 관계 링크가 제공되면 속성과도
+  일치해야 한다. 누락·중복·소속 불일치 또는 `truncated=true` 응답은
+  HTTP 502 (`assessment_response_mismatch`)로 처리한다.
+- 검증된 요건 평가에 그래프 링크로 연결된 근거만 반환한다. 소속을 확인할 수 없는
+  미연결 근거는 제외하며 원천의 판정값을 임의로 변경하지 않는다.
+- 화면은 전체 참가요건을 개수 제한 없이 펼쳐 볼 수 있게 제공한다. 같은 업종코드의
+  서로 다른 조건도 보존하며 조건식을 모두 충족·하나 이상 충족·부정 조건으로
+  구분한다. 조건식 누락이나 알 수 없는 참조는 확인 필요로 표시한다.
+- 전체 결과의 `reference_date`, `ruleset_version`, `registry_version`,
+  `requirement_set_hash`, `evidence_fingerprint`와 개별 결과의 `evaluator_version`,
+  `evaluated_at`을 함께 확인할 수 있어야 한다.
+
 ### 3.1 목록용 일괄 평가
 
 공고 목록에서는 현재 페이지의 공고 ID를 한 번에 평가한다.
@@ -225,6 +285,22 @@ POST /v1/capabilities/assess_company_bid_eligibilities:execute
 ```
 
 `outcome.items`는 공고별 `status`, `outcome`, 세 가지 결과 개수와 최대 2개의 `issues`를 반환한다. `status=error`인 항목은 `error_code`에 따라 요건 추출 전, 공고 확인 필요 또는 평가 오류로 표시한다. 상세 근거가 필요한 경우에만 단일 공고 평가 Capability를 호출한다.
+
+입찰체크 내부 일괄 평가 API는 요청 공고마다 정확히 한 결과가 있는지 검증한다.
+요청 밖 공고, 중복·누락, 알 수 없는 `status`·`outcome`, 음수·문자열·boolean 개수,
+잘못된 주요요건·이슈 형식은 HTTP 502 (`assessment_response_mismatch`)로 처리한다.
+`status=error` 항목도 요청 공고 결과로 보존하며 `error_code`를 필수로 요구한다.
+응답에 사업자등록번호가 포함된 경우 요청 회사와 대조하지만, 해당 필드가 없는
+요약 계약에서는 회사 소속까지 검증했다고 간주하지 않는다. 반환 순서는 중복을
+제거한 요청 공고 순서로 정규화한다. AND·OR 조건이 있으므로 개별 판정 개수만으로
+종합 판정값을 다시 계산하지 않는다.
+
+상세 평가의 실행 상태는 `completed`(평가 완료), `review_required`(추가 검토 필요),
+`failed`(평가 실행 실패)다. 실행 실패·누락·알 수 없는 상태에서는 화면의 종합 판정을
+확인 필요로 표시하고 요건별 판정과 개수를 숨긴다. 검토 필요 상태에서는 원천의
+세 가지 판정값을 그대로 표시한다. 화면의 조회 시각은 마지막 성공 응답을 받은
+시각으로, 평가 기준일이나 원천 관찰시각을 뜻하지 않는다. 목록·상세에서 수동
+재평가를 지원하고 상세 갱신 중에는 이전 조회 결과임을 명시한다.
 
 ## 공통 응답 형태
 
@@ -255,6 +331,18 @@ POST /v1/capabilities/assess_company_bid_eligibilities:execute
 
 객체 배열의 순서에 의존하지 말고 `ontology`, `type`, `id`로 분류한다. `links`는 객체 사이의 관계를 나타낸다. 감사·이의제기 대응이 필요하면 `include_property_provenance: true`를 사용하고 평가의 버전·지문 및 Registry 버전을 결과와 함께 보관한다. `objects`가 잘리면 근거나 요건별 결과가 누락될 수 있으므로 적격성 평가에서는 충분히 큰 `max_objects`를 지정하고 반드시 `truncated`를 검사한다.
 
+## 입찰체크 내부 API의 평가·부분 응답
+
+- 회사 기준 평가는 `/api/v1/assessments`와 `/api/v1/assessments/batch`로만 제공한다.
+  로컬 지역·면허 판정용 `/api/v1/checks`는 제거했으며 해당 경로는 404를 반환한다.
+- 계약 응답의 공고 ID는 확인된 공고번호와 차수 또는 원천의 `bid_notice_id`를 사용한다.
+  차수가 없으면 연결 ID를 비워 두며 `000`으로 추정하지 않는다. 금액·입찰률의 0은 유지한다.
+- 공고 activity 응답은 원천 `contract_pagination`, `truncated`, `relationship_context`를
+  포함한다. 상세 화면은 이 관계 데이터를 재사용하며 일부 결과를 전체 이력으로 표시하지 않는다.
+- 잘린 참가요건·참가 유의사항·평가 응답은 `teoria_truncated` 오류로 처리한다.
+  연결 실패와 잘못된 응답은 각각 `teoria_connection_error`, `teoria_invalid_response`로
+  변환하고 내부 예외 및 원문 업스트림 오류 메시지를 사용자에게 전달하지 않는다.
+
 ## 오류 처리
 
 | HTTP | 대표 코드 | 처리 |
@@ -266,7 +354,22 @@ POST /v1/capabilities/assess_company_bid_eligibilities:execute
 | 502 | Source/실행 오류 | 일시 오류로 분류하되 상세 오류에 따라 운영 알림 |
 | 504 | `capability_timeout` | 제한된 횟수로 지수 backoff 재시도 |
 
-외부 기관 API 조회를 포함한 평가는 일반 조회보다 오래 걸릴 수 있다. 클라이언트 timeout은 Runtime의 기본 Capability 제한인 120초보다 길게 설정하고, 동일 요청 재시도 시 사업자번호·공고 ID·기준일·참가방식을 동일하게 유지한다.
+외부 기관 API 조회를 포함한 평가는 일반 조회보다 오래 걸릴 수 있다.
+시간 제한은 다음 순서로 설정한다.
+
+| 계층 | 기본 시간 제한 | 적용 범위 |
+|---|---:|---|
+| Teoria 호출 | 125초 | 연결·조회·최대 1회 재시도·대기 시간을 합산한 단일 Capability |
+| 입찰체크 API | 130초 | 여러 Capability 호출과 응답 조합을 포함한 전체 HTTP 요청 |
+| Nginx | 135초 | 프록시 송신·응답 읽기의 무응답 구간 |
+| 브라우저 | 140초 | 응답 본문 읽기까지 포함한 전체 요청 |
+
+`TEORIA_TIMEOUT_SECONDS`와 `API_TIMEOUT_SECONDS`는 각각 125초·130초 이하의
+양수로 설정한다. 상한을 늘릴 때는 Nginx와 브라우저 시간 제한을 함께 조정해야 한다.
+502·504 또는 HTTPX timeout의 재시도는 Teoria 경계에서 최대 1회만 수행하며
+동일 입력을 유지한다. 전체 호출의 deadline이 지나면 재시도와 조회를 취소한다.
+프론트엔드와 프록시는 자동 재시도하지 않으며 화면에서 사용자가 재시도할 수 있다.
+브라우저의 회사·기관 전환에 따른 요청 취소는 timeout 오류로 변환하지 않는다.
 
 ## 업체 정보 조회
 

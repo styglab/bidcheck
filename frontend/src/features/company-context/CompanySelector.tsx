@@ -16,7 +16,7 @@ export function CompanySelector({
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
-  const { currentCompany, selectCompany, clearCompany } = useCompany();
+  const { currentCompany, selectCompany, clearCompany, storageError } = useCompany();
   const results = useCompanySearch(search);
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -36,6 +36,12 @@ export function CompanySelector({
             <ChevronDown size={15} />
           </button>
         </Popover.Trigger>
+        {storageError && (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300" role="status">
+            회사 선택을 브라우저에 저장하지 못했습니다. 이 탭에만 적용되며 다른 탭이나 다시 열 때 이전 선택이
+            남아 있을 수 있습니다.
+          </p>
+        )}
         <Popover.Portal>
           <Popover.Content className="company-popover" sideOffset={9} align="end" collisionPadding={16}>
             <div className="popover-title">

@@ -4,19 +4,10 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
-from app.services.teoria_adapter import award, contract, objects_of
+from app.services import search_service
+from app.services.teoria_adapter import award, contract, objects_of, organization, runtime_outcome
 
 router = APIRouter()
-
-
-def organization(obj: dict) -> dict:
-    properties = obj.get("properties", {})
-    return {
-        "id": obj.get("id"),
-        "organization_code": properties.get("organization_code"),
-        "name": properties.get("name"),
-        "jurisdiction_type": properties.get("jurisdiction_type"),
-    }
 
 
 @router.get("")
@@ -26,19 +17,9 @@ async def search_organizations(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    inputs = {"page": page, "page_size": page_size}
-    if q:
-        inputs["query"] = q
-    if organization_code:
-        inputs["organization_code"] = organization_code
-    data = await teoria_client.execute(
-        "search_public_organizations", inputs, max_objects=page_size * 2
+    return await search_service.search_organizations(
+        q=q, organization_code=organization_code, page=page, page_size=page_size
     )
-    return {
-        "items": [organization(obj) for obj in objects_of(data, "public_organization")],
-        "pagination": data.get("pagination"),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
 
 
 @router.get("/{organization_code}")
@@ -55,6 +36,7 @@ async def get_organization(organization_code: str):
         )
     return {
         "organization": organization(found[0]),
+        "truncated": bool(data.get("truncated")),
         "registry_version": data.get("registry", {}).get("version"),
     }
 
@@ -146,6 +128,7 @@ async def get_organization_activity(
         "award_pagination": awards.get("pagination", {}),
         "contracts": [contract(obj) for obj in objects_of(contracts, "contract")],
         "contract_pagination": contracts.get("pagination", {}),
+        "truncated": bool(awards.get("truncated") or contracts.get("truncated")),
     }
 
 
@@ -197,10 +180,7 @@ async def get_organization_procurement_profile(
         },
         max_objects=500,
     )
-    return {
-        **(data.get("outcome") or {}),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    return runtime_outcome(data)
 
 
 @router.get("/{organization_code}/supplier-entries")
@@ -236,10 +216,7 @@ async def get_organization_supplier_entries(
         },
         max_objects=page_size * 2,
     )
-    return {
-        **(data.get("outcome") or {}),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    return runtime_outcome(data)
 
 
 @router.get("/{organization_code}/outcomes")
@@ -276,10 +253,7 @@ async def get_organization_procurement_outcomes(
         },
         max_objects=page_size * 3,
     )
-    return {
-        **(data.get("outcome") or {}),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    return runtime_outcome(data)
 
 
 @router.get("/{organization_code}/procurement-activity")
@@ -289,7 +263,7 @@ async def get_organization_procurement_activity(
     period_to_year: int = Query(..., ge=2000),
     q: str | None = Query(None, max_length=200),
     stage: str = Query(
-        "all", pattern="^(all|scheduled|open|closed|award|contract|failed_or_cancelled)$"
+        "all", pattern="^(all|scheduled|open|closed|award|contract|failed|cancelled)$"
     ),
     large_category: str | None = Query(None, max_length=200),
     middle_category: str | None = Query(None, max_length=200),
@@ -321,11 +295,7 @@ async def get_organization_procurement_activity(
         },
         max_objects=page_size * 4,
     )
-    return {
-        **(data.get("outcome") or {}),
-        "truncated": bool(data.get("truncated")),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    return runtime_outcome(data)
 
 
 @router.get("/{organization_code}/companies/{company_number}/relationship")
@@ -372,7 +342,4 @@ async def get_organization_company_relationship(
         },
         max_objects=500,
     )
-    return {
-        **(data.get("outcome") or {}),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    return runtime_outcome(data)

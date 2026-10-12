@@ -54,11 +54,13 @@ type Props = {
 
 const stageOptions: Array<[ProcurementActivityStage, string]> = [
   ["all", "전체"],
+  ["scheduled", "예정"],
   ["open", "접수 중"],
   ["closed", "마감"],
   ["award", "낙찰"],
   ["contract", "계약"],
-  ["failed_or_cancelled", "유찰·취소"],
+  ["failed", "유찰"],
+  ["cancelled", "취소"],
 ];
 
 function companyPath(company: ProcurementOutcomeCompany, contextParams: URLSearchParams) {
@@ -279,6 +281,19 @@ function ResultSummary({
   item: ProcurementActivityGroup;
   contextParams: URLSearchParams;
 }) {
+  if (item.latest_stage === "failed" || item.latest_stage === "cancelled") {
+    const isFailed = item.latest_stage === "failed";
+    const reason = isFailed ? item.notice?.failure_reason : item.notice?.cancellation_reason;
+    return (
+      <div className="min-w-0">
+        <strong className="block text-sm">{isFailed ? "유찰" : "취소"}</strong>
+        <span className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          {reason || `${isFailed ? "유찰" : "취소"} 사유 미확인`}
+        </span>
+      </div>
+    );
+  }
+
   const contract = item.contracts[0];
   const award = [...item.awards]
     .sort((left, right) => (left.award_date ?? "").localeCompare(right.award_date ?? ""))

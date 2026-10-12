@@ -22,7 +22,8 @@ describe("OrganizationActivityPanel", () => {
               closed: 0,
               award: 0,
               contract: 0,
-              failed_or_cancelled: 0,
+              failed: 0,
+              cancelled: 0,
             },
             pagination: { page: 1, total_items: 0, total_pages: 0 },
           }}
@@ -146,7 +147,8 @@ describe("OrganizationActivityPanel", () => {
               closed: 0,
               award: 0,
               contract: 1,
-              failed_or_cancelled: 0,
+              failed: 0,
+              cancelled: 0,
             },
             pagination: { page: 1, total_items: 1, total_pages: 1 },
           }}
@@ -182,7 +184,7 @@ describe("OrganizationActivityPanel", () => {
     expect(screen.queryByText("현재 계약금액")).not.toBeInTheDocument();
     expect(screen.queryByText(/계약 기록 1건 · 낙찰 0건/)).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /접수 중/ }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: /예정/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /예정/ }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "이력 보기" })).not.toBeInTheDocument();
     expect(screen.queryByText("이 공고의 낙찰·계약")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "정보시스템 구축" })[0]).toHaveAttribute(

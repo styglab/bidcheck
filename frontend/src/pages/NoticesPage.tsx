@@ -1,3 +1,4 @@
+import { integerParam } from "@/shared/navigation/search-params";
 import { LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -33,8 +34,8 @@ export function NoticesPage() {
     include_history: historyScope,
     lineage_mode: "grouped",
     sort: "published_desc",
-    page: Number(params.get("page") || 1),
-    page_size: Number(params.get("page_size") || 20),
+    page: integerParam(params.get("page"), 1),
+    page_size: integerParam(params.get("page_size"), 20, 1, 100),
   };
   const update = useCallback(
     (values: Record<string, string>) => {
@@ -146,7 +147,7 @@ export function NoticesPage() {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
           <p className="text-xs">나라장터 API 제공 범위에 따라 일부 공고는 표시되지 않을 수 있습니다.</p>
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            {noticeQuery.data && (
+            {noticeQuery.data && noticeQuery.data.pagination.total_items > 0 && (
               <span>
                 {(noticeQuery.data.pagination.page - 1) * noticeQuery.data.pagination.page_size + 1}–
                 {Math.min(

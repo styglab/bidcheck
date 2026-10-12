@@ -10,7 +10,7 @@ import { AppErrorBoundary } from "./components/common/app-error-boundary";
 import { RouteScrollManager } from "./components/common/route-scroll-manager";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -1,3 +1,16 @@
+import { ParticipationFindingsSection } from "@/features/notices/ParticipationFindingsSection";
+import { NoticeResultsSection } from "@/features/notices/NoticeResultsSection";
+import {
+  noticeProfilePresentation,
+  money,
+  exactMoney,
+  insightMoney,
+  workType,
+  date,
+  dateTime,
+  remainingDays,
+} from "@/features/notices/notice-profile-presentation";
+import { NoticeCompanyAssessment } from "@/features/notices/NoticeCompanyAssessment";
 import { ExternalLink, FileText } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -13,78 +26,25 @@ import {
   EntityMetric,
   EntityMetricGrid,
   EntityMetricValue,
-  EntitySectionHeader,
 } from "@/components/common/entity-detail-section";
 import { SectionError } from "@/components/common/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ListPagination } from "@/components/common/list-pagination";
+
 import { MetricHelp } from "@/components/common/metric-help";
 import { NoticeRequirementsSection } from "@/features/notices/NoticeRequirementsSection";
-import { NoticeSectionNav, type NoticeSectionNavItem } from "@/features/notices/NoticeSectionNav";
+import { NoticeSectionNav } from "@/features/notices/NoticeSectionNav";
+
 import {
-  selectPrimaryAward,
-  sortAwardsByLatest,
-  sortContractsByLatest,
-} from "@/features/notices/procurement-result-presentation";
-import { formatCompactMoney, formatExactMoney } from "@/shared/format/money";
-import {
-  useBidRelationshipContext,
   useBidParticipationContext,
   useNotice,
   useNoticeActivity,
   useNoticeRelatedProjects,
-  type RelatedProjectFilter,
 } from "../features/notices/api";
 
-const money = (value?: number) => (value == null ? "-" : formatCompactMoney(value));
-const exactMoney = (value?: number) => (value == null ? "-" : formatExactMoney(value, "-"));
-const insightMoney = (value?: number) =>
-  value == null
-    ? "-"
-    : Math.abs(value) >= 100_000_000
-      ? `${(value / 100_000_000).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0억원`
-      : formatCompactMoney(value);
-const workType = (value?: string) =>
-  ({ service: "용역", goods: "물품", construction: "공사", foreign: "외자", other: "기타" })[value ?? ""] ??
-  value ??
-  "-";
-const date = (value?: string) => (value ? value.slice(0, 10).replaceAll("-", ".") : "-");
-const dateTime = (value?: string) =>
-  value
-    ? new Intl.DateTimeFormat("ko-KR", {
-        timeZone: "Asia/Seoul",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-      })
-        .format(new Date(value))
-        .replaceAll(". ", ".")
-        .replace(/\.(\d{2}:\d{2})$/, " $1")
-    : "-";
-const percent = (value?: number | string) =>
-  value == null || value === ""
-    ? "미제공"
-    : `${Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 3 })}%`;
-const remainingDays = (value?: string) => {
-  if (!value) return "-";
-  const deadline = new Date(value).getTime();
-  if (!Number.isFinite(deadline)) return "-";
-  const days = Math.ceil((deadline - Date.now()) / 86_400_000);
-  if (days < 0) return "마감";
-  if (days === 0) return "D-Day";
-  return `D-${days}`;
-};
-const PARTICIPATION_PAGE_SIZE = 20;
 export function NoticeProfilePage() {
   const { noticeId } = useParams();
-  const [relatedFilters, setRelatedFilters] = useState<RelatedProjectFilter[]>([]);
-  const [relatedPage, setRelatedPage] = useState(1);
   const [participationPagination, setParticipationPagination] = useState({ noticeId, page: 1 });
   const participationResultsRef = useRef<HTMLDivElement>(null);
   const participationPage = participationPagination.noticeId === noticeId ? participationPagination.page : 1;
@@ -92,18 +52,14 @@ export function NoticeProfilePage() {
   const shouldLoadActivity = Boolean(
     detail.data && !["scheduled", "active", "open"].includes(detail.data.notice.status),
   );
+  const shouldAnalyzeNotice = Boolean(
+    detail.data &&
+    ["scheduled", "active", "open"].includes(detail.data.notice.status) &&
+    detail.data.notice.is_latest_in_lineage !== false,
+  );
   const activity = useNoticeActivity(noticeId, shouldLoadActivity);
-  const relationshipContext = useBidRelationshipContext(noticeId, shouldLoadActivity);
-  const participationContext = useBidParticipationContext(
-    noticeId,
-    detail.data?.notice?.is_latest_in_lineage !== false,
-  );
-  const relatedProjects = useNoticeRelatedProjects(
-    noticeId,
-    relatedFilters,
-    relatedPage,
-    detail.data?.notice?.is_latest_in_lineage !== false,
-  );
+  const participationContext = useBidParticipationContext(noticeId, shouldAnalyzeNotice);
+  const relatedProjects = useNoticeRelatedProjects(noticeId, [], 1, shouldAnalyzeNotice);
 
   if (detail.isLoading)
     return (
@@ -119,528 +75,50 @@ export function NoticeProfilePage() {
       </EntityDetailLayout>
     );
 
-  const { notice, requirements, requirement_set: requirementSet } = detail.data;
-  const awards = sortAwardsByLatest(activity.data?.awards ?? []);
-  const contracts = sortContractsByLatest(activity.data?.contracts ?? []);
-  const participations = [...(activity.data?.participations ?? [])].sort(
-    (left, right) => (left.rank ?? Number.MAX_SAFE_INTEGER) - (right.rank ?? Number.MAX_SAFE_INTEGER),
+  const view = noticeProfilePresentation(
+    detail.data,
+    activity.data,
+    participationContext.data,
+    relatedProjects.data,
+    participationPage,
   );
-  const participationSummary = activity.data?.participation_summary;
-  const participationTotalPages = Math.ceil(participations.length / PARTICIPATION_PAGE_SIZE);
-  const safeParticipationPage = Math.min(participationPage, Math.max(1, participationTotalPages));
-  const visibleParticipations = participations.slice(
-    (safeParticipationPage - 1) * PARTICIPATION_PAGE_SIZE,
-    safeParticipationPage * PARTICIPATION_PAGE_SIZE,
-  );
-  const participationPartial = participationSummary?.data_completeness?.status === "partial";
-  const hasContract = contracts.length > 0;
-  const hasAward = awards.length > 0;
-  const hasOpening = participations.length > 0;
-  const isCancelled = ["cancelled", "failed", "failed_or_cancelled"].includes(notice.status);
-  const isSuperseded = notice.lineage_status === "superseded" || notice.is_latest_in_lineage === false;
-  const latestNoticeId = notice.latest_bid_notice_id ?? notice.superseded_by_bid_notice_id;
-  const isOutcome = hasContract || hasAward;
-  const status = isSuperseded
-    ? "재공고로 대체됨"
-    : hasContract
-      ? "계약 완료"
-      : hasAward
-        ? "낙찰 완료"
-        : isCancelled
-          ? "유찰·취소"
-          : hasOpening
-            ? "개찰 완료"
-            : notice.status === "scheduled"
-              ? "입찰 예정"
-              : notice.status === "active" || notice.status === "open"
-                ? "접수 중"
-                : notice.status === "closed"
-                  ? "입찰 마감"
-                  : "상태 미상";
-  const isBidding = notice.status === "active" || notice.status === "open";
-  const projectAmount = notice.allocated_budget ?? notice.estimated_price;
-  const regionState = requirementSet?.requirement_categories?.region;
-  const relationshipByCompany = new Map(
-    (relationshipContext.data?.participants ?? []).map((item) => [item.business_registration_number, item]),
-  );
-  const winner = selectPrimaryAward(awards, participations);
-  const winnerContext = winner?.company_number ? relationshipByCompany.get(winner.company_number) : undefined;
-  const decision = participationContext.data;
-  const currentLifecycleIndex = hasContract
-    ? 4
-    : hasAward
-      ? 3
-      : hasOpening || notice.status === "closed"
-        ? 2
-        : notice.status === "active" || notice.status === "open"
-          ? 1
-          : 0;
-  const lifecycleSteps = [
-    { label: "공고 게시", value: notice.published_at, detail: undefined, withTime: false },
-    {
-      label: isBidding ? "마감 예정" : "입찰 마감",
-      value: notice.deadline_at,
-      detail: undefined,
-      withTime: true,
-    },
-    { label: "개찰", value: notice.opening_at, detail: undefined, withTime: true },
-    { label: "낙찰", value: winner?.award_date ?? winner?.opening_at, detail: undefined, withTime: false },
-    {
-      label: "계약",
-      value: contracts[0]?.concluded_date ?? contracts[0]?.contract_date,
-      detail: undefined,
-      withTime: false,
-    },
-  ].map((step, index) => ({
-    ...step,
-    reached: index <= currentLifecycleIndex,
-    completed:
-      index === 0 ||
-      index < currentLifecycleIndex ||
-      (index === 2 && (hasOpening || notice.status === "closed")) ||
-      (index === 3 && hasAward) ||
-      (index === 4 && hasContract),
-  }));
-  const sectionNavItems: NoticeSectionNavItem[] = isOutcome
-    ? [{ id: "notice-result", label: "낙찰·계약 결과" }]
-    : isCancelled
-      ? !isSuperseded
-        ? [{ id: "participation-requirements", label: "참가 조건" }]
-        : []
-      : isSuperseded
-        ? []
-        : [
-            { id: "participation-requirements", label: "참가 조건" },
-            { id: "notice-analysis", label: "발주 분석" },
-            { id: "related-contracts", label: "관련 이력" },
-          ];
-  const scale = decision?.project_scale;
-  const peer = decision?.peer_benchmark;
-  const peerConcentration = peer?.supplier_concentration;
-  const peerEntry = peer?.new_supplier_amount_share;
-  const peerCompetition = peer?.competition;
-  const entryCases = decision?.new_supplier_similar_amount_cases;
-  const firstEntryCase = entryCases?.items?.[0];
-  const attentionSuppliers = decision?.attention_suppliers ?? decision?.top_suppliers ?? [];
-  const relatedFilterLabels: Array<[RelatedProjectFilter, string]> = [
-    ["entry_or_reentering_supplier", "신규·재개"],
-    ["repeat_supplier", "반복 거래"],
-    ["similar_amount", "비슷한 규모"],
-  ];
-  const relatedProjectItems = Array.from(
-    (relatedProjects.data?.items ?? [])
-      .reduce((grouped, item, index) => {
-        const eventKey =
-          item.contract_event_id ||
-          item.unified_contract_number ||
-          item.bid_notice_id ||
-          `${item.notice_name}:${item.contract_date ?? ""}:${index}`;
-        const previous = grouped.get(eventKey);
-        if (!previous) {
-          grouped.set(eventKey, {
-            ...item,
-            contractors: item.contractors?.length
-              ? [...item.contractors]
-              : item.company_name
-                ? [{ company_number: item.company_number, company_name: item.company_name }]
-                : [],
-          });
-          return grouped;
-        }
-        const companies = [
-          ...(previous.contractors ?? []),
-          ...(item.contractors?.length
-            ? item.contractors
-            : item.company_name
-              ? [{ company_number: item.company_number, company_name: item.company_name }]
-              : []),
-        ];
-        previous.contractors = companies.filter(
-          (company, companyIndex) =>
-            companies.findIndex(
-              (candidate) =>
-                (company.company_number && candidate.company_number === company.company_number) ||
-                (!company.company_number && candidate.company_name === company.company_name),
-            ) === companyIndex,
-        );
-        return grouped;
-      }, new Map<string, NonNullable<typeof relatedProjects.data>["items"][number]>())
-      .values(),
-  );
-  const relationshipStatusLabel = (item: {
-    relationship_status_summary?: string;
-    contract_time_relationship_status?: string;
-    supplier_entry_classification?: string;
-    is_repeat_supplier?: boolean;
-  }) => {
-    if (item.relationship_status_summary === "entry_or_reentering") return "신규·재개";
-    if (item.relationship_status_summary === "repeat") return "반복 거래";
-    if (item.relationship_status_summary === "mixed") return "업체별 상태";
-    if (item.contract_time_relationship_status === "entry_or_reentering") return "신규·재개";
-    if (item.contract_time_relationship_status === "repeat") return "반복 거래";
-    // Registry 2026.10.04.4 이전 응답에 대한 하위 호환 처리입니다.
-    if (item.supplier_entry_classification === "entry_or_reentering") return "신규·재개";
-    if (item.is_repeat_supplier) return "반복 거래";
-    return undefined;
-  };
-  const relatedProjectTags = (item: {
-    is_similar_amount?: boolean;
-    relationship_status_summary?: string;
-    contract_time_relationship_status?: string;
-    supplier_entry_classification?: string;
-    is_repeat_supplier?: boolean;
-  }) =>
-    [
-      item.relationship_status_summary === "mixed" ? undefined : relationshipStatusLabel(item),
-      item.is_similar_amount ? "비슷한 규모" : undefined,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  const contractVersionLabel = (item: {
-    contract_version_count?: number;
-    latest_contract_version_date?: string;
-  }) =>
-    (item.contract_version_count ?? 0) > 1
-      ? `차수계약 ${item.contract_version_count}건 · 최신 ${date(item.latest_contract_version_date)}`
-      : undefined;
-  const contractorStatusLabel = (status?: string) =>
-    status === "entry_or_reentering" ? "신규·재개" : status === "repeat" ? "반복 거래" : undefined;
-  const contractorNames = (item: NonNullable<typeof relatedProjects.data>["items"][number]) =>
-    item.contractors
-      ?.map((company) => {
-        const statusLabel =
-          item.relationship_status_summary === "mixed"
-            ? contractorStatusLabel(company.contract_time_relationship_status)
-            : undefined;
-        return `${company.company_name ?? "업체명 미확인"}${statusLabel ? ` (${statusLabel})` : ""}`;
-      })
-      .join(", ") ||
-    item.company_name ||
-    "-";
-  const scaleTopPercent =
-    scale?.percentile != null ? Math.max(1, Math.round((1 - scale.percentile) * 100)) : undefined;
-  const participantMedian = peerCompetition?.participant_count_median?.current_value;
-  const peerParticipantMedian = peerCompetition?.participant_count_median?.peer_median;
-  const entryAmountShare = peerEntry?.current_value;
-  const peerEntryAmountShare = peerEntry?.peer_median;
-  const incumbentAmountShare =
-    entryAmountShare != null && entryAmountShare >= 0 && entryAmountShare <= 1
-      ? 1 - entryAmountShare
-      : undefined;
-  const peerIncumbentAmountShare =
-    peerEntryAmountShare != null && peerEntryAmountShare >= 0 && peerEntryAmountShare <= 1
-      ? 1 - peerEntryAmountShare
-      : undefined;
-  const largeProject = scaleTopPercent != null && scaleTopPercent <= 25;
-  const lowerEntryShare =
-    entryAmountShare != null && peerEntryAmountShare != null && entryAmountShare < peerEntryAmountShare;
-  const higherConcentration =
-    peerConcentration?.current_value != null &&
-    peerConcentration?.peer_median != null &&
-    peerConcentration.current_value > peerConcentration.peer_median;
-  const hasSimilarEntryCase = (entryCases?.eligible_case_count ?? 0) > 0;
-  const hasSimilarComparison = (entryCases?.similar_amount_contract_event_count ?? 0) > 0;
-  const singleBidCount =
-    peerCompetition?.single_participant_share?.current_value != null
-      ? Math.round(
-          peerCompetition.single_participant_share.current_value * (peerCompetition.current_bid_count ?? 0),
-        )
-      : undefined;
-  const organizationFieldInsight = lowerEntryShare
-    ? `기존에 거래하던 업체의 계약 비중이 높고${singleBidCount != null ? ", 입찰에 참여하는 업체도 적은 편입니다." : " 있습니다."}`
-    : higherConcentration
-      ? "일부 업체에 계약금액이 집중되는 편입니다."
-      : singleBidCount != null
-        ? "비교 가능한 과거 입찰에서 한 업체만 참여한 사례가 확인됩니다."
-        : "비교할 수 있는 과거 자료가 충분하지 않습니다.";
-  const currentNoticeInsight =
-    largeProject && hasSimilarEntryCase
-      ? "평소보다 큰 사업이지만, 비슷한 규모의 신규·재개 계약 사례도 있습니다."
-      : largeProject
-        ? "과거에 발주한 사업보다 규모가 큰 편입니다."
-        : hasSimilarEntryCase
-          ? "비슷한 규모의 신규·재개 계약 사례가 있습니다."
-          : hasSimilarComparison
-            ? "비슷한 규모의 신규·재개 계약 사례는 확인되지 않습니다."
-            : "이번 공고와 비교할 수 있는 과거 계약 사례가 충분하지 않습니다.";
-  const supplierReasons = (supplier: {
-    contract_event_count?: number;
-    latest_contract_date?: string;
-    attention_reasons?: string[];
-    display_attention_reasons?: string[];
-  }) => {
-    const labels: Record<string, string> = {
-      new_supplier_contract_case: "신규·재개 계약",
-      entry_or_reentering_contract_case: "신규·재개 계약",
-      entry_or_reentering_contract: "신규·재개 계약",
-      entry_then_repeat: "신규·재개 후 반복 거래",
-      contract_amount_leader: "계약금액 상위",
-      similar_amount_experience: "비슷한 규모의 계약 경험",
-      repeated_contracts: "동일 기관·분야 반복 거래",
-      large_contract_history: "동일 분야 상위 규모 계약",
-      large_contract_experience: "동일 분야 상위 규모 계약",
-      field_upper_quartile_experience: "동일 분야 상위 규모 계약",
-      recent_contract: "최근 동일 분야 계약",
-      field_specialist: "다른 기관의 동일 분야 계약 다수",
-      organization_specialist: "이 기관 중심 계약 이력",
-    };
-    const source = supplier.display_attention_reasons?.length
-      ? supplier.display_attention_reasons
-      : (supplier.attention_reasons ?? []);
-    const reasons = [...new Set(source.map((item) => labels[item] ?? item).filter(Boolean))].slice(0, 2);
-    if (reasons.length) return reasons;
-    return [
-      (supplier.contract_event_count ?? 0) >= 2 ? "동일 기관·분야 반복 거래" : "동일 기관·분야 계약 이력",
-    ];
-  };
-
-  const resultContent = (
-    <div className="space-y-6">
-      <section>
-        <div
-          className="scroll-mt-[calc(var(--site-header-height,70px)+1rem)]"
-          ref={participationResultsRef}
-          tabIndex={-1}
-        >
-          <EntitySectionHeader
-            title="낙찰 정보"
-            description="개찰 참여업체의 순위와 낙찰 결과입니다."
-            meta={
-              <strong className="text-sm text-foreground">
-                {participationSummary?.source_participant_count != null
-                  ? `참여 ${participationSummary.source_participant_count.toLocaleString("ko-KR")}개 · 확인 ${participations.length.toLocaleString("ko-KR")}개`
-                  : `확인된 업체 ${participations.length.toLocaleString("ko-KR")}개`}
-              </strong>
-            }
-          />
-        </div>
-        {participations.length > 0 ? (
-          <>
-            <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
-              <div className="grid grid-cols-[4rem_minmax(0,1fr)_9rem_7rem_6rem] gap-3 bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground">
-                <span>순위</span>
-                <span>업체</span>
-                <span className="text-right">투찰금액</span>
-                <span className="text-right">투찰률</span>
-                <span className="text-center">결과</span>
-              </div>
-              {visibleParticipations.map((item) => {
-                const itemAward = awards.find((award) => award.company_number === item.company_number);
-                const resultLabel = itemAward ? "낙찰" : hasAward ? "미낙찰" : "확인 중";
-                return (
-                  <div
-                    className={`grid grid-cols-[4rem_minmax(0,1fr)_9rem_7rem_6rem] items-center gap-3 border-t px-4 py-3 text-sm ${item.rank === 1 ? "bg-blue-50/60" : ""}`}
-                    key={item.id}
-                  >
-                    <strong
-                      className={
-                        item.rank === 1 ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"
-                      }
-                    >
-                      {item.rank != null ? `${item.rank}위` : "-"}
-                    </strong>
-                    {item.company_number ? (
-                      <Link
-                        className="truncate font-semibold hover:underline"
-                        to={`/companies/${encodeURIComponent(item.company_number)}?name=${encodeURIComponent(item.company_name ?? "업체")}`}
-                      >
-                        {item.company_name ?? "업체명 미확인"}
-                      </Link>
-                    ) : (
-                      <strong className="truncate">{item.company_name ?? "업체명 미확인"}</strong>
-                    )}
-                    <span className="text-right tabular-nums">{exactMoney(item.bid_amount)}</span>
-                    <span className="text-right tabular-nums text-muted-foreground">
-                      {percent(item.bid_rate)}
-                    </span>
-                    <span className="text-center">
-                      <Badge
-                        className={
-                          itemAward
-                            ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:bg-blue-950/60"
-                            : ""
-                        }
-                        variant={itemAward ? "default" : "secondary"}
-                      >
-                        {resultLabel}
-                      </Badge>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 divide-y overflow-hidden rounded-xl border sm:hidden">
-              {visibleParticipations.map((item) => {
-                const itemAward = awards.find((award) => award.company_number === item.company_number);
-                const resultLabel = itemAward ? "낙찰" : hasAward ? "미낙찰" : "확인 중";
-                return (
-                  <article className={item.rank === 1 ? "bg-blue-50/60 p-4" : "p-4"} key={item.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 gap-3">
-                        <strong
-                          className={
-                            item.rank === 1
-                              ? "shrink-0 text-blue-700 dark:text-blue-300"
-                              : "shrink-0 text-muted-foreground"
-                          }
-                        >
-                          {item.rank != null ? `${item.rank}위` : "-"}
-                        </strong>
-                        {item.company_number ? (
-                          <Link
-                            className="font-semibold hover:underline"
-                            to={`/companies/${encodeURIComponent(item.company_number)}?name=${encodeURIComponent(item.company_name ?? "업체")}`}
-                          >
-                            {item.company_name ?? "업체명 미확인"}
-                          </Link>
-                        ) : (
-                          <strong>{item.company_name ?? "업체명 미확인"}</strong>
-                        )}
-                      </div>
-                      <Badge
-                        className={
-                          itemAward
-                            ? "border-0 bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-200 dark:hover:bg-blue-950/60"
-                            : ""
-                        }
-                        variant={itemAward ? "default" : "secondary"}
-                      >
-                        {resultLabel}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 pl-9 text-xs text-muted-foreground">
-                      투찰 {exactMoney(item.bid_amount)} · 투찰률 {percent(item.bid_rate)}
-                    </p>
-                  </article>
-                );
-              })}
-            </div>
-            {participationPartial ? (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                원천 참여업체 {participationSummary?.source_participant_count.toLocaleString("ko-KR")}개 중{" "}
-                {participationSummary?.returned_participant_count.toLocaleString("ko-KR")}개가 확인되었습니다.
-                누락 업체 정보는 재수집 중입니다.
-              </p>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">
-                현재 데이터에서 확인 가능한 업체를 표시합니다.
-              </p>
-            )}
-            <ListPagination
-              label="참여업체 페이지"
-              page={safeParticipationPage}
-              totalPages={participationTotalPages}
-              onChange={(page) => {
-                setParticipationPagination({ noticeId, page });
-                window.requestAnimationFrame(() => {
-                  participationResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  participationResultsRef.current?.focus({ preventScroll: true });
-                });
-              }}
-            />
-          </>
-        ) : (
-          <p className="mt-4 rounded-xl bg-muted/40 p-5 text-sm text-muted-foreground">
-            확인된 참여 업체 명단이 없습니다.
-          </p>
-        )}
-      </section>
-      {hasContract && (
-        <section className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
-          <EntitySectionHeader
-            title="계약 정보"
-            description="최종 계약업체와 계약 결과입니다."
-            meta={
-              contracts[0]?.detail_url ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={contracts[0].detail_url} target="_blank" rel="noreferrer">
-                    계약 원문 <ExternalLink className="ml-1 size-3.5" />
-                  </a>
-                </Button>
-              ) : undefined
-            }
-          />
-          <div className="mt-4 hidden overflow-hidden rounded-xl border sm:block">
-            <div className="grid grid-cols-[minmax(0,1.5fr)_1fr_1fr_1.2fr] gap-3 bg-muted/50 px-4 py-3 text-xs font-semibold text-muted-foreground">
-              <span>계약업체</span>
-              <span className="text-right">계약금액</span>
-              <span className="text-right">계약일</span>
-              <span className="text-right">계약번호</span>
-            </div>
-            {contracts.map((contract) => (
-              <div
-                className="grid grid-cols-[minmax(0,1.5fr)_1fr_1fr_1.2fr] items-center gap-3 border-t px-4 py-4 text-sm"
-                key={contract.id}
-              >
-                <strong className="truncate">
-                  {contract.lead_contractor?.company_name ?? winner?.company_name ?? "업체명 미확인"}
-                  {(contract.contractor_count ?? 0) > 1
-                    ? ` 외 ${(contract.contractor_count ?? 1) - 1}개 업체`
-                    : ""}
-                </strong>
-                <strong className="text-right tabular-nums">{exactMoney(contract.amount)}</strong>
-                <span className="text-right tabular-nums text-muted-foreground">
-                  {date(contract.concluded_date ?? contract.contract_date)}
-                </span>
-                <span className="truncate text-right font-mono text-xs text-muted-foreground">
-                  {contract.contract_number ?? contract.unified_contract_number ?? "-"}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 divide-y overflow-hidden rounded-xl border sm:hidden">
-            {contracts.map((contract) => (
-              <article className="p-4" key={contract.id}>
-                <strong className="block">
-                  {contract.lead_contractor?.company_name ?? winner?.company_name ?? "업체명 미확인"}
-                  {(contract.contractor_count ?? 0) > 1
-                    ? ` 외 ${(contract.contractor_count ?? 1) - 1}개 업체`
-                    : ""}
-                </strong>
-                <dl className="mt-3 grid gap-2 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-muted-foreground">계약금액</dt>
-                    <dd className="font-semibold tabular-nums">{exactMoney(contract.amount)}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-muted-foreground">계약일</dt>
-                    <dd className="tabular-nums">
-                      {date(contract.concluded_date ?? contract.contract_date)}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-muted-foreground">계약번호</dt>
-                    <dd className="font-mono text-xs">
-                      {contract.contract_number ?? contract.unified_contract_number ?? "-"}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-      {!hasAward && !hasContract && (
-        <p className="rounded-xl bg-muted/40 p-5 text-sm text-muted-foreground">
-          확인된 낙찰·계약 결과가 없습니다.
-        </p>
-      )}
-      {winner?.company_number &&
-        (winnerContext?.prior_organization_relationship?.contract_event_count ?? 0) > 0 && (
-          <section className="rounded-xl border bg-muted/20 p-5">
-            <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">이전 계약 이력</p>
-            <p className="mt-2 font-bold">
-              {notice.organization} ↔ {winner.company_name}
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              이 공고 이전 계약 {winnerContext?.prior_organization_relationship?.contract_event_count}건 ·
-              최근 계약 {date(winnerContext?.prior_organization_relationship?.latest_contract_date)}
-            </p>
-          </section>
-        )}
-    </div>
-  );
-
+  const {
+    notice,
+    requirements,
+    isFailed,
+    isCancelled,
+    isStopped,
+    isSuperseded,
+    latestNoticeId,
+    isOutcome,
+    status,
+    isBidding,
+    projectAmount,
+    regionState,
+    currentLifecycleIndex,
+    lifecycleSteps,
+    sectionNavItems,
+    scale,
+    peerConcentration,
+    peerCompetition,
+    entryCases,
+    firstEntryCase,
+    attentionSuppliers,
+    relatedProjectItems,
+    relatedHistoryHref,
+    relatedProjectTags,
+    contractVersionLabel,
+    contractorNames,
+    scaleTopPercent,
+    participantMedian,
+    peerParticipantMedian,
+    incumbentAmountShare,
+    peerIncumbentAmountShare,
+    singleBidCount,
+    organizationFieldInsight,
+    currentNoticeInsight,
+    supplierReasons,
+  } = view;
   return (
     <EntityDetailLayout fallbackTo="/notices">
       <EntityDetailHeader
@@ -658,7 +136,7 @@ export function NoticeProfilePage() {
         meta={
           <span className="inline-flex flex-wrap items-center gap-2">
             <Badge
-              className={`h-5 border-0 px-2 text-[11px] font-semibold leading-none ${isSuperseded ? "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-950/50" : isBidding ? "bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-950/50" : isCancelled ? "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50" : "bg-muted text-foreground hover:bg-muted"}`}
+              className={`h-5 border-0 px-2 text-[11px] font-semibold leading-none ${isSuperseded ? "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-200 dark:hover:bg-amber-950/50" : isBidding ? "bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-950/50" : isFailed ? "bg-orange-100 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/50 dark:text-orange-200 dark:hover:bg-orange-950/50" : isCancelled ? "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50" : "bg-muted text-foreground hover:bg-muted"}`}
             >
               {status}
             </Badge>
@@ -746,12 +224,18 @@ export function NoticeProfilePage() {
               </Button>
             )}
           </div>
-        ) : isCancelled ? (
+        ) : isStopped ? (
           <div className="flex items-center gap-3">
-            <Badge className="border-0 bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50">
-              유찰·취소
+            <Badge
+              className={`border-0 ${isFailed ? "bg-orange-100 text-orange-800 hover:bg-orange-100 dark:bg-orange-950/50 dark:text-orange-200 dark:hover:bg-orange-950/50" : "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950/50"}`}
+            >
+              {isFailed ? "유찰" : "취소"}
             </Badge>
-            <p className="text-sm text-muted-foreground">자세한 사유는 나라장터 원문에서 확인해 주세요.</p>
+            <p className="text-sm text-muted-foreground">
+              {isFailed
+                ? notice.failure_reason || "유찰 사유는 나라장터 원문에서 확인해 주세요."
+                : notice.cancellation_reason || "취소 사유는 나라장터 원문에서 확인해 주세요."}
+            </p>
           </div>
         ) : (
           <ol className="grid sm:grid-cols-5">
@@ -782,10 +266,7 @@ export function NoticeProfilePage() {
                   >
                     {step.label}
                   </strong>
-                  <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                    {step.withTime ? dateTime(step.value) : date(step.value)}
-                  </p>
-                  {step.detail && <p className="mt-1 line-clamp-2 text-xs font-medium">{step.detail}</p>}
+                  <p className="mt-1 text-xs tabular-nums text-muted-foreground">{step.dateText}</p>
                 </div>
               </li>
             ))}
@@ -804,12 +285,22 @@ export function NoticeProfilePage() {
             className="scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)] pt-8"
             id="notice-result"
           >
-            {resultContent}
+            <NoticeResultsSection
+              view={view}
+              resultsRef={participationResultsRef}
+              onPageChange={(page) => {
+                setParticipationPagination({ noticeId, page });
+                window.requestAnimationFrame(() => {
+                  participationResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  participationResultsRef.current?.focus({ preventScroll: true });
+                });
+              }}
+            />
           </section>
         </>
       ) : (
         <div className="mt-8 flex flex-col">
-          {!isOutcome && !isCancelled && !isSuperseded && (
+          {!isOutcome && !isStopped && !isSuperseded && (
             <>
               <EntityDetailSection
                 className="order-2 scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)]"
@@ -951,56 +442,16 @@ export function NoticeProfilePage() {
                 className="order-4 scroll-mt-[calc(var(--site-header-height,70px)+4.5rem)]"
                 divided
                 sectionId="related-contracts"
-                title="동일 분야 계약 이력"
-                description="동일 기관·업무·공식 조달분야에서 확인된 과거 계약입니다."
+                title="유사 계약 이력"
+                description="같은 기관·업무·조달분야에서 최근 확인된 계약 5건입니다."
               >
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <FilterChip
-                    onClick={() => {
-                      setRelatedFilters([]);
-                      setRelatedPage(1);
-                    }}
-                    selected={relatedFilters.length === 0}
-                  >
-                    전체 {relatedProjects.data?.filter_counts?.all ?? ""}
-                  </FilterChip>
-                  {relatedFilterLabels.map(([value, label]) => {
-                    const selected = relatedFilters.includes(value);
-                    return (
-                      <FilterChip
-                        key={value}
-                        onClick={() => {
-                          setRelatedFilters((current) =>
-                            selected ? current.filter((item) => item !== value) : [...current, value],
-                          );
-                          setRelatedPage(1);
-                        }}
-                        selected={selected}
-                      >
-                        {label}{" "}
-                        {relatedProjects.data?.filter_counts?.[value] != null
-                          ? relatedProjects.data.filter_counts[value]
-                          : ""}
-                      </FilterChip>
-                    );
-                  })}
-                </div>
-                {relatedFilters.length > 1 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    선택한 조건을 모두 만족하는 계약{" "}
-                    {relatedProjects.data?.applied_filter?.total_items ??
-                      relatedProjects.data?.pagination.total_items ??
-                      0}
-                    건
-                  </p>
-                )}
                 {relatedProjects.isLoading ? (
                   <Skeleton className="mt-4 h-64 rounded-xl" />
                 ) : relatedProjects.isError ? (
                   <div className="mt-4">
                     <SectionError
                       error={relatedProjects.error}
-                      title="동일 분야 계약 이력"
+                      title="유사 계약 이력"
                       onRetry={() => relatedProjects.refetch()}
                     />
                   </div>
@@ -1113,34 +564,16 @@ export function NoticeProfilePage() {
                     </div>
                     {!relatedProjectItems.length && (
                       <div className="mt-4 rounded-xl border p-5">
-                        <p className="text-sm text-muted-foreground">
-                          {relatedFilters.includes("similar_amount") &&
-                          relatedFilters.includes("entry_or_reentering_supplier")
-                            ? "비슷한 규모의 신규·재개 계약이 없습니다."
-                            : "조건에 맞는 동일 분야 계약이 없습니다."}
-                        </p>
-                        {relatedFilters.length > 0 && (
-                          <Button
-                            className="mt-3"
-                            onClick={() => {
-                              setRelatedFilters([]);
-                              setRelatedPage(1);
-                            }}
-                            size="sm"
-                            variant="outline"
-                          >
-                            조건 초기화
-                          </Button>
-                        )}
+                        <p className="text-sm text-muted-foreground">확인된 유사 계약이 없습니다.</p>
                       </div>
                     )}
-                    <ListPagination
-                      label="동일 분야 계약 페이지"
-                      loading={relatedProjects.isFetching}
-                      page={relatedProjects.data?.pagination.page ?? relatedPage}
-                      totalPages={relatedProjects.data?.pagination.total_pages}
-                      onChange={setRelatedPage}
-                    />
+                    {relatedHistoryHref && (
+                      <div className="mt-4 flex justify-end">
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={relatedHistoryHref}>기관 공고·계약 전체 보기</Link>
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </EntityDetailSection>
@@ -1248,7 +681,19 @@ export function NoticeProfilePage() {
           )}
 
           {!isSuperseded && (
-            <NoticeRequirementsSection regionApplicability={regionState} requirements={requirements} />
+            <>
+              <NoticeRequirementsSection
+                regionApplicability={regionState}
+                requirements={requirements}
+                expression={
+                  detail.data.requirement_set?.requirement_expression ?? notice.requirement_expression
+                }
+              />
+              <NoticeCompanyAssessment noticeId={notice.id} requirements={requirements} />
+              {detail.data.participation_findings?.length > 0 && (
+                <ParticipationFindingsSection findings={detail.data.participation_findings} />
+              )}
+            </>
           )}
         </div>
       )}

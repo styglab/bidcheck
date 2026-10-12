@@ -4,6 +4,7 @@ import type { CompanySummary } from "./company";
 
 export type CompanyContextValue = {
   currentCompany: CompanySummary | null;
+  storageError: boolean;
   selectCompany: (company: CompanySummary) => void;
   clearCompany: () => void;
 };

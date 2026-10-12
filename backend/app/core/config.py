@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,7 +9,8 @@ class Settings(BaseSettings):
     secret_key: str = "development-only"
     teoria_runtime_url: str = "http://runtime-api:8000"
     teoria_runtime_token: str = ""
-    teoria_timeout_seconds: float = 125.0
+    teoria_timeout_seconds: float = Field(125.0, gt=0, le=125)
+    api_timeout_seconds: float = Field(130.0, gt=0, le=130)
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

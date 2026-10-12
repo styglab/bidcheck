@@ -1,3 +1,9 @@
+import { formatKoreanDate } from "@/shared/format/date";
+import { procurementWorkTypeLabels as workTypeLabels } from "@/shared/procurement/presentation";
+import { useCompany } from "@/features/company-context/useCompany";
+import { useAssessmentPreviews } from "./api";
+import { assessmentLookupTime } from "./assessment-presentation";
+import { NoticeAssessmentPreview } from "./NoticeAssessmentPreview";
 import { ArrowUpRight, Building2, CalendarClock, SearchX } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -9,28 +15,18 @@ import { useNotices, type NoticeFilters } from "./api";
 
 function dday(deadline?: string) {
   if (!deadline) return null;
-  const days = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000);
+  const timestamp = new Date(deadline).getTime();
+  if (!Number.isFinite(timestamp)) return null;
+  const days = Math.ceil((timestamp - Date.now()) / 86400000);
   return days >= 0 ? `D-${days}` : "마감";
 }
 function price(value?: number) {
   return value == null ? "금액 미정" : formatCompactMoney(value);
 }
 function shortDate(value?: string) {
-  if (!value) return "미정";
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
+  return formatKoreanDate(value, { year: "2-digit", month: "2-digit", day: "2-digit" }, "미정");
 }
-const workTypeLabels: Record<string, string> = {
-  goods: "물품",
-  service: "용역",
-  construction: "공사",
-  foreign: "외자",
-  other: "기타",
-};
+
 const statusLabels: Record<string, { label: string; className: string }> = {
   scheduled: {
     label: "입찰 예정",
@@ -48,13 +44,21 @@ const statusLabels: Record<string, { label: string; className: string }> = {
     label: "입찰 마감",
     className: "bg-muted text-muted-foreground",
   },
+  awarded: {
+    label: "낙찰",
+    className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  },
+  contracted: {
+    label: "계약",
+    className: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
+  },
   cancelled: {
-    label: "유찰·취소",
+    label: "취소",
     className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
   },
   failed: {
-    label: "유찰·취소",
-    className: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
+    label: "유찰",
+    className: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
   },
   unknown: {
     label: "일정 확인",
@@ -64,6 +68,12 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 
 export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
   const query = useNotices(filters);
+  const { currentCompany } = useCompany();
+  const assessments = useAssessmentPreviews(
+    query.isPlaceholderData ? [] : (query.data?.items ?? []).map((item) => item.id),
+    currentCompany?.businessNumber,
+  );
+  const previews = new Map(assessments.data?.items.map((item) => [item.bid_notice_id, item]));
   if (query.isLoading)
     return (
       <div className="grid gap-3">
@@ -97,6 +107,23 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
     );
   return (
     <>
+      {currentCompany && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <p>
+            {assessments.data && !assessments.isError
+              ? `회사 기준 결과 조회 시각: ${assessmentLookupTime(assessments.dataUpdatedAt)} (한국 시간)`
+              : "현재 페이지의 공고를 회사 기준으로 검토합니다."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={query.isPlaceholderData || assessments.isFetching}
+            onClick={() => assessments.refetch()}
+          >
+            회사 기준 결과 다시 평가
+          </Button>
+        </div>
+      )}
       <div className="overflow-hidden rounded-xl border bg-card">
         <div className="hidden grid-cols-[minmax(320px,1.5fr)_minmax(190px,.8fr)_120px_110px_150px] gap-5 border-b bg-muted/35 px-5 py-3 text-xs font-semibold text-muted-foreground lg:grid">
           <span>공고</span>
@@ -142,6 +169,13 @@ export function NoticeTable({ filters = {} }: { filters?: NoticeFilters }) {
                   </h2>
                   <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                 </Link>
+                {currentCompany && (
+                  <NoticeAssessmentPreview
+                    item={previews.get(notice.id)}
+                    loading={query.isPlaceholderData || assessments.isFetching}
+                    failed={assessments.isError}
+                  />
+                )}
               </div>
               <div className="min-w-0">
                 <span className="mb-1 block text-[11px] text-muted-foreground lg:hidden">발주기관</span>

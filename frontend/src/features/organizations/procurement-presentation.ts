@@ -31,14 +31,7 @@ export const formatMonthDay = (value?: string) => {
   return month && day ? `${month}월 ${day}일` : undefined;
 };
 
-export const procurementWorkTypeLabel: Record<string, string> = {
-  goods: "물품",
-  service: "용역",
-  construction: "공사",
-  foreign: "외자",
-  other: "기타",
-  unknown: "미분류",
-};
+export { procurementWorkTypeLabels as procurementWorkTypeLabel } from "@/shared/procurement/presentation";
 
 export const supplierEntryToRelationship = (company: SupplierEntryCompany): ProcurementRelationship => ({
   company_number: company.company_number,
@@ -77,9 +70,21 @@ export const procurementActivityStatus: Record<string, { label: string; classNam
     label: "낙찰",
     className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
   },
+  award: {
+    label: "낙찰",
+    className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  },
   contracted: {
     label: "계약",
     className: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
+  },
+  contract: {
+    label: "계약",
+    className: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
+  },
+  failed: {
+    label: "유찰",
+    className: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
   },
   cancelled: {
     label: "취소",
@@ -114,9 +119,7 @@ export function getProcurementActivityView(item: ProcurementActivityGroup) {
       ? "awarded"
       : item.latest_stage === "contract"
         ? "contracted"
-        : item.latest_stage === "failed_or_cancelled"
-          ? "cancelled"
-          : item.latest_stage;
+        : item.latest_stage;
   const status = procurementActivityStatus[styleKey] ?? procurementActivityStatus.unknown;
   const projectAmount = item.notice?.project_amount;
   const projectAmountBasis = item.notice?.project_amount_basis_name;
@@ -125,9 +128,11 @@ export function getProcurementActivityView(item: ProcurementActivityGroup) {
       ? { label: "입찰 시작 전", dateLabel: "마감", date: item.notice?.deadline_at }
       : item.latest_stage === "open"
         ? { label: "입찰 진행 중", dateLabel: "마감", date: item.notice?.deadline_at }
-        : item.latest_stage === "failed_or_cancelled"
-          ? { label: "유찰·취소", dateLabel: "처리", date: item.latest_activity_date }
-          : { label: "입찰 마감", dateLabel: "마감", date: item.notice?.deadline_at };
+        : item.latest_stage === "failed"
+          ? { label: "유찰", dateLabel: "유찰일", date: item.latest_activity_date }
+          : item.latest_stage === "cancelled"
+            ? { label: "취소", dateLabel: "취소일", date: item.latest_activity_date }
+            : { label: "입찰 마감", dateLabel: "마감", date: item.notice?.deadline_at };
   const latestContract = getLatestConfirmedContract(item);
   const latestContractDate =
     latestContract?.latest_contract_version_date ?? latestContract?.first_contract_date;
@@ -145,7 +150,7 @@ export function getProcurementActivityView(item: ProcurementActivityGroup) {
     resultDate:
       item.latest_stage === "contract"
         ? (latestContractDate ?? item.latest_activity_date ?? noticeDetail.date)
-        : item.latest_stage === "award" || item.latest_stage === "failed_or_cancelled"
+        : item.latest_stage === "award" || item.latest_stage === "failed" || item.latest_stage === "cancelled"
           ? (item.latest_activity_date ?? noticeDetail.date)
           : (noticeDetail.date ?? item.latest_activity_date),
     resultDateLabel:

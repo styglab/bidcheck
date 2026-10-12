@@ -1,7 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CompanyProvider } from "@/features/company-context/CompanyContext";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NoticesPage } from "@/pages/NoticesPage";
 
 const { useNoticesMock } = vi.hoisted(() => ({ useNoticesMock: vi.fn() }));
@@ -48,7 +50,11 @@ describe("NoticesPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/notices"]}>
-        <NoticesPage />
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <CompanyProvider>
+            <NoticesPage />
+          </CompanyProvider>
+        </QueryClientProvider>
       </MemoryRouter>,
     );
 
@@ -65,3 +71,26 @@ describe("NoticesPage", () => {
     );
   });
 });
+
+it("잘못된 URL 페이지 값을 기본값으로 처리한다", () => {
+  useNoticesMock.mockReturnValue({
+    data: response,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  });
+  render(
+    <MemoryRouter initialEntries={["/notices?page=1.5&page_size=Infinity"]}>
+      <QueryClientProvider client={new QueryClient()}>
+        <CompanyProvider>
+          <NoticesPage />
+        </CompanyProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+  expect(useNoticesMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 20 }));
+  expect(screen.getByText("공공 정보시스템 구축 사업")).toBeInTheDocument();
+});
+
+afterEach(cleanup);

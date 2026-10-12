@@ -17,7 +17,7 @@ export function CompanyProfileBanner() {
           </div>
           <div className="min-w-0 flex-1">
             <strong className="text-sm text-foreground">
-              회사 정보를 적용하면 참가 가능 여부를 확인할 수 있어요.
+              회사 정보를 적용하면 주요 참가요건을 비교할 수 있어요.
             </strong>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               사업자등록번호만 입력하면 주요 참가요건을 비교합니다.

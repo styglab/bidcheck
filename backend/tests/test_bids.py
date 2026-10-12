@@ -14,9 +14,11 @@ def _notice(notice_id: str, status: str, published_at: str, opening_at: str | No
             "notice_order": order,
             "notice_name": f"{status} 공고",
             "bid_status": status,
+            "current_status": status,
             "work_type": "service",
             "notice_organization_name": "테스트 기관",
             "notice_published_at": published_at,
+            "bid_begin_at": "2026-10-14T01:00:00Z",
             "opening_at": opening_at,
         },
     }
@@ -83,6 +85,80 @@ def test_search_does_not_recalculate_unknown_status(monkeypatch):
     assert response.json()["pagination"]["total_items"] == 1
 
 
+def test_notice_uses_current_status_and_preserves_status_evidence(monkeypatch):
+    async def execute(capability, inputs, **options):
+        item = _notice("FAILED:000", "closed", "2026-10-08T00:00:00+00:00")
+        item["properties"].update(
+            {
+                "current_status": "failed",
+                "current_status_label": "유찰",
+                "notice_status": "active",
+                "failure_reason": "단독응찰",
+                "failure_at": "2026-10-08T09:00:00Z",
+                "status_source": "pps_bid_result_api.list_failing_opening_results",
+            }
+        )
+        return {
+            "objects": [item],
+            "pagination": {"page": 1, "page_size": 20, "total_items": 1, "total_pages": 1},
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get("/api/v1/bids?include_history=true&page=1&page_size=20")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["status"] == "failed"
+    assert item["bid_status"] == "closed"
+    assert item["notice_status"] == "active"
+    assert item["failure_reason"] == "단독응찰"
+
+
+def test_notice_exposes_bid_begin_at(monkeypatch):
+    async def execute(capability, inputs, **options):
+        return {
+            "objects": [_notice("SCHEDULED:000", "scheduled", "2026-10-11T00:00:00Z")],
+            "pagination": {"page": 1, "page_size": 20, "total_items": 1, "total_pages": 1},
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get("/api/v1/bids?page=1&page_size=20")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["bid_begin_at"] == "2026-10-14T01:00:00Z"
+
+
+def test_related_projects_uses_current_filter_contract(monkeypatch):
+    calls = []
+
+    async def execute(capability, inputs, **options):
+        calls.append((capability, inputs))
+        return {
+            "outcome": {
+                "items": [],
+                "filter_counts": {"all": 0},
+                "pagination": {"page": 1, "page_size": 5, "total_items": 0, "total_pages": 0},
+            }
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+
+    response = TestClient(app).get(
+        "/api/v1/bids/NOTICE%3A000/related-projects"
+        "?project_filter=similar_amount&filter_operator=and&page=1&page_size=5"
+    )
+
+    assert response.status_code == 200
+    assert calls[0][0] == "search_bid_related_projects"
+    assert calls[0][1]["project_filters"] == ["similar_amount"]
+    assert calls[0][1]["filter_operator"] == "and"
+    assert "project_filter" not in calls[0][1]
+
+
 def test_search_accepts_other_work_type(monkeypatch):
     calls = []
 
@@ -136,10 +212,31 @@ def test_notice_detail_attaches_document_evidence_to_requirement(monkeypatch):
             return {"objects": [_notice("NOTICE:000", "open", "2026-09-01T00:00:00+00:00")]}
         if capability == "get_bid_requirements":
             return {
-            "objects": [
-                {"id": "req-1", "type": "bid_requirement", "properties": {"requirement_id": "req-1", "value_text": '{"text":"면허"}', "assessment_stage": "qualification_review"}},
-                {"id": "ev-1", "type": "bid_requirement_evidence", "properties": {"evidence_id": "ev-1", "requirement_id": "req-1", "source_type": "document", "source_document": "공고문.hwpx", "source_page": 3, "source_clause": "입찰참가자격", "source_excerpt": "입찰참가자는 ...", "source_url": "https://example.com/notice"}},
-            ]
+                "objects": [
+                    {
+                        "id": "req-1",
+                        "type": "bid_requirement",
+                        "properties": {
+                            "requirement_id": "req-1",
+                            "value_text": '{"text":"면허"}',
+                            "assessment_stage": "qualification_review",
+                        },
+                    },
+                    {
+                        "id": "ev-1",
+                        "type": "bid_requirement_evidence",
+                        "properties": {
+                            "evidence_id": "ev-1",
+                            "requirement_id": "req-1",
+                            "source_type": "document",
+                            "source_document": "공고문.hwpx",
+                            "source_page": 3,
+                            "source_clause": "입찰참가자격",
+                            "source_excerpt": "입찰참가자는 ...",
+                            "source_url": "https://example.com/notice",
+                        },
+                    },
+                ]
             }
         return {"registry": {"version": "2026.09.12.4"}, "objects": []}
 
@@ -162,8 +259,27 @@ def test_notice_detail_attaches_evidence_to_participation_finding(monkeypatch):
         return {
             "registry": {"version": "2026.09.12.4"},
             "objects": [
-                {"id": "finding-object", "type": "bid_participation_finding", "properties": {"finding_id": "finding-1", "category": "participation_note", "title": "서류 제출", "review_status": "needs_review"}},
-                {"id": "evidence-object", "type": "bid_participation_finding_evidence", "properties": {"evidence_id": "evidence-1", "finding_id": "finding-1", "source_document": "공고문.pdf", "source_page": 2, "source_excerpt": "서류를 제출해야 한다."}},
+                {
+                    "id": "finding-object",
+                    "type": "bid_participation_finding",
+                    "properties": {
+                        "finding_id": "finding-1",
+                        "category": "participation_note",
+                        "title": "서류 제출",
+                        "review_status": "needs_review",
+                    },
+                },
+                {
+                    "id": "evidence-object",
+                    "type": "bid_participation_finding_evidence",
+                    "properties": {
+                        "evidence_id": "evidence-1",
+                        "finding_id": "finding-1",
+                        "source_document": "공고문.pdf",
+                        "source_page": 2,
+                        "source_excerpt": "서류를 제출해야 한다.",
+                    },
+                },
             ],
         }
 
@@ -252,11 +368,13 @@ def test_organization_field_companies_uses_current_participation_context(monkeyp
     )
 
     assert response.status_code == 200
-    assert calls == [(
-        "analyze_bid_participation_context",
-        {"bid_notice_id": "NOTICE:000", "period_years": 5},
-        {"max_objects": 300},
-    )]
+    assert calls == [
+        (
+            "analyze_bid_participation_context",
+            {"bid_notice_id": "NOTICE:000", "period_years": 5},
+            {"max_objects": 300},
+        )
+    ]
     assert response.json()["organization_field_companies"][0]["company_number"] == "1234567890"
     assert response.json()["market_similar_companies"][0]["company_number"] == "0987654321"
 
@@ -272,16 +390,18 @@ def test_market_context_uses_related_projects_without_legacy_capabilities(monkey
         return {
             "outcome": {
                 "analysis_basis": {"period_years": 5},
-                "items": [{
-                    "contract_event_id": "CONTRACT-1",
-                    "bid_notice_id": "PAST:000",
-                    "notice_name": "과거 사업",
-                    "company_number": "1234567890",
-                    "company_name": "테스트기업",
-                    "contract_amount": 100000000,
-                    "first_contract_date": "2025-03-01",
-                    "matched_filters": ["similar_amount"],
-                }],
+                "items": [
+                    {
+                        "contract_event_id": "CONTRACT-1",
+                        "bid_notice_id": "PAST:000",
+                        "notice_name": "과거 사업",
+                        "company_number": "1234567890",
+                        "company_name": "테스트기업",
+                        "contract_amount": 100000000,
+                        "first_contract_date": "2025-03-01",
+                        "matched_filters": ["similar_amount"],
+                    }
+                ],
             }
         }
 
@@ -295,3 +415,234 @@ def test_market_context_uses_related_projects_without_legacy_capabilities(monkey
     assert payload["similar_notices"][0]["company_number"] == "1234567890"
     assert payload["companies"][0]["contract_count"] == 0
     assert payload["sample_size"] == 1
+
+
+def test_notice_activity_keeps_relationship_context_and_partial_contracts(monkeypatch):
+    calls = []
+    pagination = {"page": 1, "page_size": 20, "total_items": 30, "total_pages": 2}
+
+    async def execute(capability, inputs, **options):
+        calls.append(capability)
+        if capability == "get_bid_notice_relationship_context":
+            return {"outcome": {"bid_notice": {"bid_notice_id": "NOTICE:003"}, "participants": []}}
+        if capability == "get_bid_notice_contracts":
+            return {"objects": [], "pagination": pagination, "truncated": True}
+        return {"outcome": {"opening_events": []}}
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:003/activity")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["contract_pagination"] == pagination
+    assert data["truncated"] is True
+    assert data["relationship_context"]["bid_notice"]["bid_notice_id"] == "NOTICE:003"
+    assert calls.count("get_bid_notice_relationship_context") == 1
+
+
+def test_legacy_local_check_is_not_available():
+    assert TestClient(app).post("/api/v1/checks", json={}).status_code == 404
+
+
+def test_assessment_validates_notice_and_reference_date_without_upstream_calls(monkeypatch):
+    async def execute(*args, **kwargs):
+        raise AssertionError("invalid inputs must be rejected locally")
+
+    monkeypatch.setattr(teoria_assessments.teoria_client, "execute", execute)
+    client = TestClient(app)
+    for body in [
+        {"notice_id": "NOTICE"},
+        {"notice_id": "NOTICE:003", "reference_date": "invalid"},
+    ]:
+        response = client.post(
+            "/api/v1/assessments", json={"business_registration_number": "1234567890", **body}
+        )
+        assert response.status_code == 422
+
+
+def test_notice_detail_selects_requested_notice_by_id_not_array_order(monkeypatch):
+    async def execute(capability, inputs, **options):
+        if capability == "get_bid_notice":
+            return {
+                "objects": [
+                    _notice("NOTICE:000", "closed", "2026-10-01T00:00:00Z"),
+                    _notice("NOTICE:003", "open", "2026-10-02T00:00:00Z"),
+                ]
+            }
+        return {"objects": []}
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:003")
+    assert response.status_code == 200
+    assert response.json()["notice"]["id"] == "NOTICE:003"
+
+
+def test_assessment_response_links_runtime_evidence_and_keeps_contract_metadata(monkeypatch):
+    async def execute(capability, inputs, **options):
+        assert capability == "assess_company_bid_eligibility"
+        return {
+            "objects": [
+                {
+                    "id": "e1",
+                    "type": "evidence",
+                    "properties": {
+                        "evidence_kind": "structured_api",
+                        "observed_value_text": "조회된 회사 값",
+                        "valid_until": "2026-12-31",
+                    },
+                },
+                {
+                    "id": "a1",
+                    "type": "requirement_assessment",
+                    "properties": {
+                        "requirement_id": "req-1",
+                        "assessment_id": "overall",
+                        "business_registration_number": "1234567890",
+                        "evaluated_value_text": "회사 확인값",
+                        "evaluator_version": "evaluator-v1",
+                        "outcome": "needs_review",
+                    },
+                },
+                {
+                    "id": "overall",
+                    "type": "bid_eligibility_assessment",
+                    "properties": {
+                        "bid_notice_id": "NOTICE:003",
+                        "business_registration_number": "1234567890",
+                        "ruleset_version": "rules-v1",
+                        "reference_date": "2026-10-12",
+                    },
+                },
+            ],
+            "links": [
+                {
+                    "type": "requirement_assessment_supported_by_evidence",
+                    "source": "a1",
+                    "target": "e1",
+                }
+            ],
+            "registry": {"version": "registry-v1"},
+        }
+
+    monkeypatch.setattr(teoria_assessments.teoria_client, "execute", execute)
+    response = TestClient(app).post(
+        "/api/v1/assessments",
+        json={"notice_id": "NOTICE:003", "business_registration_number": "1234567890"},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["requirement_assessments"][0]["evidence_ids"] == ["e1"]
+    assert result["requirement_assessments"][0]["outcome"] == "needs_review"
+    assert result["requirement_assessments"][0]["evaluator_version"] == "evaluator-v1"
+    assert result["evidence"][0]["observed_value_text"] == "조회된 회사 값"
+    assert result["assessment"]["ruleset_version"] == "rules-v1"
+
+
+def test_assessment_context_mismatch_returns_safe_gateway_error(monkeypatch):
+    async def execute(*args, **kwargs):
+        return {
+            "objects": [
+                {
+                    "type": "bid_eligibility_assessment",
+                    "id": "foreign-assessment",
+                    "properties": {
+                        "bid_notice_id": "OTHER:001",
+                        "business_registration_number": "0987654321",
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(teoria_assessments.teoria_client, "execute", execute)
+    response = TestClient(app).post(
+        "/api/v1/assessments",
+        json={
+            "notice_id": "NOTICE:003",
+            "business_registration_number": "1234567890",
+        },
+    )
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "assessment_response_mismatch"
+    assert "foreign-assessment" not in response.text
+    assert "0987654321" not in response.text
+
+
+def test_batch_context_mismatch_returns_safe_gateway_error(monkeypatch):
+    async def execute(*args, **kwargs):
+        return {
+            "outcome": {
+                "items": [
+                    {
+                        "bid_notice_id": "FOREIGN:001",
+                        "status": "completed",
+                        "outcome": "satisfied",
+                        "satisfied_count": 1,
+                        "unsatisfied_count": 0,
+                        "needs_review_count": 0,
+                    }
+                ]
+            }
+        }
+
+    monkeypatch.setattr(teoria_assessments.teoria_client, "execute", execute)
+    response = TestClient(app).post(
+        "/api/v1/assessments/batch",
+        json={
+            "bid_notice_ids": ["NOTICE:003"],
+            "business_registration_number": "1234567890",
+        },
+    )
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "assessment_response_mismatch"
+    assert "FOREIGN" not in response.text
+
+
+def test_notice_requirement_set_selection_uses_requested_notice(monkeypatch):
+    async def execute(capability, *args, **kwargs):
+        if capability == "get_bid_notice":
+            return {"objects": [_notice("NOTICE:003", "open", "2026-10-12T00:00:00Z")]}
+        if capability == "get_bid_requirements":
+            return {
+                "objects": [
+                    {
+                        "type": "bid_requirement_set",
+                        "id": "foreign",
+                        "properties": {"bid_notice_id": "OTHER:001"},
+                    },
+                    {
+                        "type": "bid_requirement_set",
+                        "id": "ours",
+                        "properties": {"bid_notice_id": "NOTICE:003"},
+                    },
+                ]
+            }
+        return {"objects": []}
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:003")
+    assert response.status_code == 200
+    assert response.json()["requirement_set"]["id"] == "ours"
+
+
+def test_notice_ambiguous_requirement_set_returns_safe_gateway_error(monkeypatch):
+    async def execute(capability, *args, **kwargs):
+        if capability == "get_bid_notice":
+            return {"objects": [_notice("NOTICE:003", "open", "2026-10-12T00:00:00Z")]}
+        return {
+            "objects": [
+                {
+                    "type": "bid_requirement_set",
+                    "id": "one",
+                    "properties": {"bid_notice_id": "NOTICE:003"},
+                },
+                {
+                    "type": "bid_requirement_set",
+                    "id": "two",
+                    "properties": {"bid_notice_id": "NOTICE:003"},
+                },
+            ]
+        }
+
+    monkeypatch.setattr(bids.teoria_client, "execute", execute)
+    response = TestClient(app).get("/api/v1/bids/NOTICE:003")
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "requirement_set_mismatch"

@@ -1,34 +1,39 @@
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
 
 from app.integrations.teoria import teoria_client
-from app.services.teoria_adapter import objects_of
+from app.schemas.assessment import AssessmentRequest, BatchAssessmentRequest
+from app.services.teoria_adapter import (
+    AssessmentResponseMismatch,
+    assessment_response,
+    batch_assessment_response,
+)
 
 router = APIRouter()
 
 
-class AssessmentRequest(BaseModel):
-    business_registration_number: str = Field(pattern=r"^[0-9]{10}$")
-    notice_id: str
-    reference_date: str | None = None
-    participation_mode: str | None = None
-
-
-class BatchAssessmentRequest(BaseModel):
-    business_registration_number: str = Field(pattern=r"^[0-9]{10}$")
-    bid_notice_ids: list[str] = Field(min_length=1, max_length=100)
-    reference_date: str | None = None
-    participation_mode: str = "single"
-
-
 @router.post("")
 async def assess(payload: AssessmentRequest):
-    inputs = {"business_registration_number": payload.business_registration_number, "bid_notice_id": payload.notice_id}
-    if payload.reference_date: inputs["reference_date"] = payload.reference_date
-    if payload.participation_mode: inputs["participation_mode"] = payload.participation_mode
-    data = await teoria_client.execute("assess_company_bid_eligibility", inputs, max_objects=1000, provenance=True)
-    overall = objects_of(data, "bid_eligibility_assessment")
-    return {"assessment": overall[0].get("properties", {}) if overall else None, "requirement_assessments": [{"id": x.get("id"), **x.get("properties", {})} for x in objects_of(data, "requirement_assessment")], "evidence": [{"id": x.get("id"), **x.get("properties", {})} for x in objects_of(data, "evidence")], "registry_version": data.get("registry", {}).get("version")}
+    inputs = {
+        "business_registration_number": payload.business_registration_number,
+        "bid_notice_id": payload.notice_id,
+    }
+    if payload.reference_date:
+        inputs["reference_date"] = payload.reference_date.isoformat()
+    if payload.participation_mode:
+        inputs["participation_mode"] = payload.participation_mode
+    data = await teoria_client.execute(
+        "assess_company_bid_eligibility", inputs, max_objects=1000, provenance=True
+    )
+    try:
+        return assessment_response(data, payload.notice_id, payload.business_registration_number)
+    except AssessmentResponseMismatch:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "assessment_response_mismatch",
+                "message": "평가 결과의 공고·회사·요건 소속을 확인할 수 없습니다. 다시 조회해 주세요.",
+            },
+        ) from None
 
 
 @router.post("/batch")
@@ -39,13 +44,21 @@ async def assess_batch(payload: BatchAssessmentRequest):
         "participation_mode": payload.participation_mode,
     }
     if payload.reference_date:
-        inputs["reference_date"] = payload.reference_date
+        inputs["reference_date"] = payload.reference_date.isoformat()
     data = await teoria_client.execute(
         "assess_company_bid_eligibilities",
         inputs,
         max_objects=100,
     )
-    return {
-        "items": (data.get("outcome") or {}).get("items", []),
-        "registry_version": data.get("registry", {}).get("version"),
-    }
+    try:
+        return batch_assessment_response(
+            data, inputs["bid_notice_ids"], payload.business_registration_number
+        )
+    except AssessmentResponseMismatch:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "assessment_response_mismatch",
+                "message": "일괄 평가 결과의 공고·판정 정보를 확인할 수 없습니다. 다시 조회해 주세요.",
+            },
+        ) from None

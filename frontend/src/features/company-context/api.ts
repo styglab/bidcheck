@@ -1,3 +1,4 @@
+import { keepPreviousForEntity } from "@/shared/api/query-placeholder";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 export type CompanySearchItem = {
@@ -199,7 +200,38 @@ export function useCompanyActivity(
   });
 }
 
+export type CompanyParticipationMetrics = {
+  participation_count: number | null;
+  observed_participation_count: number;
+  result_confirmed_participation_count: number;
+  observed_award_count: number;
+  independent_award_event_count: number;
+  observed_success_rate: number | null;
+  success_rate_numerator: number;
+  success_rate_denominator: number;
+  overall_success_rate: number | null;
+  collection_status: "collecting" | "complete" | "failed" | "unknown";
+  collection_status_label: string;
+  known_opening_event_count?: number;
+  collected_opening_event_count?: number;
+};
+export type CompanyParticipationAnalysis = {
+  summary: CompanyParticipationMetrics;
+  yearly_activity: Array<CompanyParticipationMetrics & { year: number }>;
+  basis: {
+    maximum_opening_rank?: number;
+    retain_available_final_winner_regardless_of_rank?: boolean;
+    all_participants_retained?: boolean;
+    success_rate_scope?: string;
+    overall_participation_coverage?: string;
+    year_basis?: string;
+    timezone?: string;
+  };
+};
+
 export type CompanyProcurementProfile = {
+  participation_analysis?: CompanyParticipationAnalysis;
+  truncated?: boolean;
   company: { business_registration_number: string; name: string };
   summary: import("../organizations/api").ProcurementProfileSummary;
   organization_relationships: import("../organizations/api").ProcurementRelationship[];
@@ -345,7 +377,8 @@ export function useCompanyProcurementProfile(
       ),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["company-procurement-profile", businessNumber]),
   });
 }
 
@@ -390,6 +423,7 @@ export function useCompanyCompetitors(
       ),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["company-competitors", businessNumber]),
   });
 }

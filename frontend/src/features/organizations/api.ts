@@ -1,3 +1,4 @@
+import { keepPreviousForEntity } from "@/shared/api/query-placeholder";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 
@@ -41,46 +42,6 @@ type ProcurementFilters = {
   fieldCode?: string;
   workType?: string;
 };
-
-export function useOrganizationActivity(
-  code?: string,
-  enabled = true,
-  periodYears = 5,
-  page = 1,
-  query?: string,
-  filters: ProcurementFilters = {},
-  kind: "awards" | "contracts" = "awards",
-  periodRange?: { from: number; to: number },
-) {
-  const search = new URLSearchParams({
-    period_years: String(periodYears),
-    page: String(page),
-    page_size: "20",
-    kind,
-  });
-  if (periodRange) {
-    search.set("period_from_year", String(periodRange.from));
-    search.set("period_to_year", String(periodRange.to));
-  }
-  if (query) search.set("q", query);
-  if (filters.largeCategory) search.set("large_category", filters.largeCategory);
-  if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
-  if (filters.fieldCode) search.set("field_code", filters.fieldCode);
-  if (filters.workType) search.set("work_type", filters.workType);
-  return useQuery({
-    queryKey: ["organization-activity", code, periodYears, periodRange, page, query, filters, kind],
-    queryFn: ({ signal }) =>
-      api<{
-        awards: import("../notices/api").ProcurementAward[];
-        award_pagination: { page?: number; total_items?: number; total_pages?: number };
-        contracts: import("../notices/api").ProcurementContract[];
-        contract_pagination: { page?: number; total_items?: number; total_pages?: number };
-      }>(`/organizations/${encodeURIComponent(code!)}/activity?${search}`, { signal }),
-    enabled: Boolean(code) && enabled,
-    staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
-  });
-}
 
 export type ProcurementOutcomeCompany = {
   business_registration_number?: string;
@@ -126,68 +87,9 @@ export type ProcurementActivityContract = {
   relationship_status?: "confirmed" | "inferred" | "unknown";
   relationship_basis?: Record<string, unknown> | null;
 };
-export type ProcurementOutcome = {
-  outcome_id: string;
-  bid_notice_id?: string;
-  notice_name?: string;
-  organization_code?: string;
-  organization_name?: string;
-  stage: "award" | "contract";
-  stage_name?: string;
-  latest_activity_date?: string;
-  work_type?: string;
-  field_code?: string;
-  field_name?: string;
-  large_category?: string;
-  middle_category?: string;
-  award?: ProcurementActivityAward;
-  contract?: {
-    contract_event_id?: string;
-    unified_contract_number?: string;
-    first_contract_date?: string;
-    contract_date?: string;
-    contract_amount?: number;
-    contract_version_count?: number;
-    lead_contractor?: ProcurementOutcomeCompany;
-    contractor_count?: number;
-    contractors?: ProcurementOutcomeCompany[];
-  };
-};
-export function useOrganizationOutcomes(
-  code?: string,
-  enabled = true,
-  periodRange?: { from: number; to: number },
-  page = 1,
-  query?: string,
-  filters: ProcurementFilters = {},
-) {
-  const search = new URLSearchParams({
-    period_from_year: String(periodRange?.from),
-    period_to_year: String(periodRange?.to),
-    page: String(page),
-    page_size: "20",
-  });
-  if (query) search.set("q", query);
-  if (filters.largeCategory) search.set("large_category", filters.largeCategory);
-  if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
-  if (filters.fieldCode) search.set("field_code", filters.fieldCode);
-  if (filters.workType) search.set("work_type", filters.workType);
-  return useQuery({
-    queryKey: ["organization-outcomes", code, periodRange, page, query, filters],
-    queryFn: ({ signal }) =>
-      api<{
-        items: ProcurementOutcome[];
-        pagination: { page: number; total_items: number; total_pages: number };
-        registry_version?: string;
-      }>(`/organizations/${encodeURIComponent(code!)}/outcomes?${search}`, { signal }),
-    enabled: Boolean(code && periodRange && enabled),
-    staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
-  });
-}
 
 export type ProcurementActivityStage =
-  "all" | "scheduled" | "open" | "closed" | "award" | "contract" | "failed_or_cancelled";
+  "all" | "scheduled" | "open" | "closed" | "award" | "contract" | "failed" | "cancelled";
 export type ProcurementActivityGroup = {
   activity_group_id: string;
   bid_notice_id?: string;
@@ -210,6 +112,14 @@ export type ProcurementActivityGroup = {
     deadline_at?: string;
     status?: string;
     notice_status?: string;
+    current_status?: string;
+    current_status_label?: string;
+    failure_reason?: string;
+    failure_at?: string;
+    cancellation_reason?: string;
+    cancellation_at?: string;
+    status_source?: string;
+    status_confirmed_at?: string;
     work_type?: string;
     project_amount?: number;
     project_amount_basis?: string;
@@ -265,7 +175,8 @@ export function useOrganizationProcurementActivity(
       }>(`/organizations/${encodeURIComponent(code!)}/procurement-activity?${search}`, { signal }),
     enabled: Boolean(code && periodRange && enabled),
     staleTime: 5 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["organization-procurement-activity", code]),
   });
 }
 
@@ -395,6 +306,7 @@ export type SupplierEntry = {
   company_preview?: SupplierEntryCompany[];
 };
 export type OrganizationProcurementProfile = {
+  truncated?: boolean;
   organization: { code: string; name: string };
   summary: ProcurementProfileSummary;
   company_relationships: ProcurementRelationship[];
@@ -548,7 +460,8 @@ export function useOrganizationProcurementProfile(
       ),
     enabled: Boolean(code) && enabled,
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["organization-procurement-profile", code]),
   });
 }
 export function useOrganizationSupplierEntries(
@@ -587,7 +500,8 @@ export function useOrganizationSupplierEntries(
       }>(`/organizations/${encodeURIComponent(code!)}/supplier-entries?${search}`, { signal }),
     enabled: Boolean(code && targetYear && enabled),
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, ["organization-supplier-entries", code]),
   });
 }
 export function useOrganizationCompanyRelationship(
@@ -629,6 +543,11 @@ export function useOrganizationCompanyRelationship(
       ),
     enabled: Boolean(organizationCode && companyNumber) && enabled,
     staleTime: 10 * 60_000,
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, query) =>
+      keepPreviousForEntity(previous, query?.queryKey, [
+        "organization-company-relationship",
+        organizationCode,
+        companyNumber,
+      ]),
   });
 }
