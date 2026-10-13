@@ -5,6 +5,7 @@ import { EntityTabs } from "@/components/common/entity-tabs";
 type EntityTab = { id: string; label: string; count?: number };
 
 type Props = {
+  className?: string;
   tabs: EntityTab[];
   value: string;
   onTabChange: (value: string) => void;
@@ -17,9 +18,12 @@ type Props = {
   hasError?: boolean;
   onRetry?: () => void;
   children: ReactNode;
+  primaryContent?: ReactNode;
+  trailingAction?: ReactNode;
 };
 
 export function EntityDetailContextBar({
+  className,
   tabs,
   value,
   onTabChange,
@@ -32,6 +36,8 @@ export function EntityDetailContextBar({
   hasError,
   onRetry,
   children,
+  primaryContent,
+  trailingAction,
 }: Props) {
   const rootRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -105,25 +111,30 @@ export function EntityDetailContextBar({
 
   return (
     <section
-      className={`sticky top-[var(--site-header-height,70px)] z-20 -mx-5 mt-6 bg-card transition-shadow sm:-mx-7 ${isStuck ? "shadow-[0_8px_18px_-16px_rgb(15_23_42/0.55)]" : ""}`}
+      className={`sticky top-[var(--site-header-height,70px)] z-20 -mx-5 mt-6 bg-card transition-shadow sm:-mx-7 ${isStuck ? "shadow-[0_8px_18px_-16px_rgb(15_23_42/0.55)]" : ""} ${className ?? ""}`}
       aria-label="상세 탐색 및 조회 조건"
       ref={rootRef}
     >
       <div className="flex min-h-14 items-stretch border-y px-2 sm:px-4">
-        <EntityTabs
-          className="mt-0 h-14 min-w-0 flex-1 border-b-0"
-          fillHeight
-          items={tabs}
-          onChange={onTabChange}
-          value={value}
-        />
+        {primaryContent ?? (
+          <EntityTabs
+            className="mt-0 h-14 min-w-0 flex-1 border-b-0"
+            fillHeight
+            items={tabs}
+            onChange={onTabChange}
+            value={value}
+          />
+        )}
         <div className="ml-2 flex min-w-0 shrink-0 items-center gap-3 border-l pl-3">
           {compactConditionSummary && (
             <span className="hidden max-w-36 truncate text-xs font-medium text-muted-foreground md:block lg:hidden">
               {compactConditionSummary}
             </span>
           )}
-          <span className="hidden max-w-64 truncate text-xs font-medium text-muted-foreground lg:block xl:max-w-80">
+          <span
+            title={conditionSummary}
+            className={`hidden truncate text-xs font-medium text-muted-foreground lg:block ${primaryContent ? "w-48" : "max-w-64 xl:max-w-80"}`}
+          >
             {conditionSummary}
           </span>
           <span className="sr-only" aria-live="polite">
@@ -180,6 +191,7 @@ export function EntityDetailContextBar({
               aria-hidden="true"
             />
           </button>
+          {trailingAction}
         </div>
       </div>
       {filterOpen && (

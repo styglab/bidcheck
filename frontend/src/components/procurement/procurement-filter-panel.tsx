@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import { Slider } from "radix-ui";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -24,6 +25,8 @@ type Props = {
   onReset: () => void;
   isUpdating?: boolean;
   compact?: boolean;
+  fieldContent?: ReactNode;
+  appliedLabel?: string;
 };
 
 export function ProcurementFilterPanel({
@@ -44,6 +47,8 @@ export function ProcurementFilterPanel({
   onReset,
   isUpdating,
   compact = false,
+  fieldContent,
+  appliedLabel = "적용 필터",
 }: Props) {
   return (
     <section
@@ -106,23 +111,25 @@ export function ProcurementFilterPanel({
         </div>
         <div className="order-2 w-full min-w-0 flex-1 sm:min-w-64">
           <p className="mb-2 text-xs font-medium text-muted-foreground">분야</p>
-          <SearchableSelect
-            ariaLabel="분야"
-            disabled={fieldDisabled}
-            emptyMessage="일치하는 분야가 없습니다."
-            onValueChange={onFieldChange}
-            options={fieldOptions}
-            placeholder={fieldPlaceholder}
-            searchPlaceholder="분야명 검색"
-            value={fieldValue}
-          />
+          {fieldContent ?? (
+            <SearchableSelect
+              ariaLabel="분야"
+              disabled={fieldDisabled}
+              emptyMessage="일치하는 분야가 없습니다."
+              onValueChange={onFieldChange}
+              options={fieldOptions}
+              placeholder={fieldPlaceholder}
+              searchPlaceholder="분야명 검색"
+              value={fieldValue}
+            />
+          )}
         </div>
       </div>
       {appliedFilters.length > 0 && (
         <div
           className={`${compact ? "mt-3 py-2" : "mt-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3"} flex flex-wrap items-center gap-2 text-xs`}
         >
-          <span className="mr-1 font-semibold text-primary">적용 필터</span>
+          <span className="mr-1 font-semibold text-primary">{appliedLabel}</span>
           {appliedFilters.map((filter) => (
             <button
               className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-background px-3 py-1.5 font-semibold text-primary shadow-sm hover:bg-primary/[0.07]"

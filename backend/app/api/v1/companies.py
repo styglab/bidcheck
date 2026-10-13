@@ -4,7 +4,8 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
-from app.services import search_service
+from app.services import company_discovery_service, search_service
+from app.services.procurement_cache import cached_runtime_read
 from app.services.teoria_adapter import award, objects_of, opening_participation, runtime_outcome
 
 router = APIRouter()
@@ -77,6 +78,21 @@ async def discover_companies(q: str = Query(min_length=2, max_length=100)):
         or pagination.get("total_items", 0) > len(objects_of(data, "bid_award")),
         "registry_version": data.get("registry", {}).get("version"),
     }
+
+
+@router.get("/contract-discovery")
+async def discover_contract_companies(
+    q: str = Query(min_length=2, max_length=100),
+    period_years: int = Query(3, ge=1, le=5),
+):
+    if len(q.strip()) < 2:
+        raise HTTPException(
+            422, detail={"code": "invalid_query", "message": "검색어를 2자 이상 입력해 주세요."}
+        )
+    year = datetime.now(UTC).year
+    return await company_discovery_service.discover_contract_companies(
+        q, year - period_years + 1, year
+    )
 
 
 @router.get("/{business_number}/profile")
@@ -199,7 +215,7 @@ async def company_procurement_activity(
         **({"field_code": field_code} if field_code else {}),
         **({"work_type": work_type} if work_type else {}),
     }
-    participations = await teoria_client.execute(
+    participations = await cached_runtime_read(
         "search_bid_participations",
         {
             "business_registration_number": number,
@@ -249,7 +265,7 @@ async def get_company_competitors(
 ):
     if period_from_year > period_to_year:
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "analyze_company_competitors",
         {
             "business_registration_number": "".join(ch for ch in business_number if ch.isdigit()),
@@ -296,7 +312,7 @@ async def get_company_procurement_analysis(
     ):
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     number = "".join(ch for ch in business_number if ch.isdigit())
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "analyze_company_procurement_profile",
         {
             "business_registration_number": number,

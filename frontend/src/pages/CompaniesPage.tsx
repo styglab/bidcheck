@@ -1,297 +1,448 @@
-import { ArrowUpRight, Building2, LoaderCircle, Search, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Dialog } from "radix-ui";
+import { ArrowRight, Search, X } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
-import { AnalysisIndexHeader } from "@/components/layout/analysis-index-header";
-import { EntityDetailToolbar, EntitySectionHeader } from "@/components/common/entity-detail-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCompactMoney as money } from "@/shared/format/money";
-import { useCompanyDiscovery, useCompanySearch } from "../features/company-context/api";
+import { CompanySectorDiscovery } from "@/features/company-context/CompanySectorDiscovery";
+import { CompanyExplorerPanel } from "@/features/company-context/CompanyExplorerPanel";
+import {
+  useCompanySearch,
+  useContractCompanyDiscovery,
+  type ContractCompanyCandidate,
+} from "@/features/company-context/api";
+import { formatCompactMoney, formatExactMoney } from "@/shared/format/money";
 
-const examples = ["사무용 의자", "정보시스템 유지관리", "시설물 안전점검", "교육 기자재", "조경공사"];
-const day = (value?: string) => (value ? value.replaceAll("-", ".") : "일자 미상");
+const examples = ["정보시스템 유지관리", "시설물 안전점검", "사무용 의자", "교육 기자재"];
+function subscribeDesktop(callback: () => void) {
+  const media = window.matchMedia?.("(min-width: 1024px)");
+  media?.addEventListener("change", callback);
+  return () => media?.removeEventListener("change", callback);
+}
+function isDesktop() {
+  return window.matchMedia?.("(min-width: 1024px)").matches ?? true;
+}
 
 export function CompaniesPage() {
+  const [params] = useSearchParams();
+  return <CompanyExplorer key={`${params.get("q")}-${params.get("mode")}-${params.get("period")}`} />;
+}
+
+function CompanyExplorer() {
   const [params, setParams] = useSearchParams();
-  const initial = params.get("q") ?? "";
-  const initialMode =
-    params.get("mode") === "company" || /^\d{10}$/.test(initial.replace(/\D/g, "")) ? "company" : "field";
-  const [mode, setMode] = useState<"field" | "company">(initialMode);
-  const [input, setInput] = useState(initial);
-  const [search, setSearch] = useState(initial);
+  const search = params.get("q") ?? "";
+  const mode = params.get("mode") === "company" ? "company" : "field";
+  const period = [1, 3, 5].includes(Number(params.get("period"))) ? Number(params.get("period")) : 3;
+  const sort = params.get("sort") === "amount" ? "amount" : "count";
+  const [input, setInput] = useState(search);
+  const [showSectors, setShowSectors] = useState(false);
+  const [limit, setLimit] = useState(20);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const selectedTrigger = useRef<HTMLButtonElement | null>(null);
+  const desktop = useSyncExternalStore(subscribeDesktop, isDesktop, () => true);
+  const contracts = useContractCompanyDiscovery(mode === "field" ? search : "", period);
   const names = useCompanySearch(mode === "company" ? search : "");
-  const discovery = useCompanyDiscovery(mode === "field" ? search : "");
-  const activeQuery = mode === "company" ? names : discovery;
-  const changeMode = (next: "field" | "company") => {
-    setMode(next);
-    setInput("");
-    setSearch("");
-    setParams(next === "company" ? { mode: "company" } : {});
+  const request = mode === "field" ? contracts : names;
+  const candidates: ContractCompanyCandidate[] =
+    mode === "field"
+      ? (contracts.data?.items ?? [])
+      : (names.data?.items ?? [])
+          .filter((item) => item.business_registration_number)
+          .map((item) => ({
+            business_registration_number: item.business_registration_number!,
+            name: item.name ?? "업체명 확인 필요",
+            contract_count: 0,
+            contracts: [],
+          }));
+  const items = [...candidates].sort((a, b) =>
+    sort === "amount"
+      ? (b.contracts[0]?.amount ?? -1) - (a.contracts[0]?.amount ?? -1) || a.name.localeCompare(b.name)
+      : b.contract_count - a.contract_count || a.name.localeCompare(b.name),
+  );
+  const selected = items.find((item) => item.business_registration_number === params.get("selected"));
+  const compared = (params.get("compare") ?? "").split(",").filter(Boolean);
+  const comparison = items.filter((item) => compared.includes(item.business_registration_number)).slice(0, 3);
+  const toYear = contracts.data?.analysis_basis.period_to_year ?? new Date().getFullYear();
+  const fromYear = contracts.data?.analysis_basis.period_from_year ?? toYear - period + 1;
+  const maximum = Math.max(1, ...items.map((item) => item.contracts[0]?.amount ?? 0));
+  const update = (changes: Record<string, string | undefined>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(changes).forEach(([key, value]) => (value ? next.set(key, value) : next.delete(key)));
+    setParams(next);
   };
   const submit = (value = input) => {
-    const next = value.trim();
-    const nextMode = /^\d{10}$/.test(next.replace(/\D/g, "")) ? "company" : mode;
-    setMode(nextMode);
-    setInput(next);
-    setSearch(next);
-    setParams(
-      next
-        ? { q: next, ...(nextMode === "company" ? { mode: "company" } : {}) }
-        : nextMode === "company"
-          ? { mode: "company" }
-          : {},
-    );
+    const query = value.trim();
+    if (query.length < 2) return;
+    update({
+      q: query,
+      selected: undefined,
+      compare: undefined,
+      mode: /^\d{10}$/.test(query.replace(/\D/g, "")) ? "company" : mode,
+    });
   };
-
+  const toggleCompare = (number: string) => {
+    const next = comparison.map((item) => item.business_registration_number);
+    if (next.includes(number)) update({ compare: next.filter((item) => item !== number).join(",") });
+    else if (next.length < 3) update({ compare: [...next, number].join(",") });
+  };
+  const panel = selected && (
+    <CompanyExplorerPanel
+      key={`${selected.business_registration_number}-${fromYear}-${toYear}`}
+      candidate={selected}
+      fromYear={fromYear}
+      toYear={toYear}
+    />
+  );
   return (
-    <PageContainer className="max-w-6xl !pt-7 sm:!pt-10">
-      <AnalysisIndexHeader
-        description="업체명뿐 아니라 제품이나 사업 분야를 검색해 실제 낙찰·계약 이력을 확인할 수 있습니다."
-        label="업체 분석"
-        title="조달업체를 분석하세요"
-      />
-
-      <EntityDetailToolbar>
+    <PageContainer className="max-w-7xl !pt-8 sm:!pt-12">
+      <header className={search ? "max-w-3xl" : "mx-auto max-w-3xl py-8 text-center sm:py-14"}>
+        <p className="text-xs font-semibold tracking-[.16em] text-primary">BIDCHECK · 실적 업체 탐색</p>
+        <h1 className={`mt-4 font-bold tracking-tight ${search ? "text-3xl" : "text-4xl sm:text-5xl"}`}>
+          어떤 업체를 찾으세요?
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+          사업 분야를 검색하고, 실제 계약 실적과 경쟁업체를 확인하세요.
+        </p>
         <form
+          className="mt-7 flex gap-2 rounded-2xl border bg-card p-2 shadow-sm"
           onSubmit={(event) => {
             event.preventDefault();
             submit();
           }}
         >
-          <div
-            className="mb-4 inline-flex rounded-lg bg-muted p-1"
-            role="tablist"
-            aria-label="업체 검색 방식"
-          >
-            <button
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "field" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={() => changeMode("field")}
-              role="tab"
-              aria-selected={mode === "field"}
-              type="button"
-            >
-              분야·제품으로 찾기
-            </button>
-            <button
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${mode === "company" ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={() => changeMode("company")}
-              role="tab"
-              aria-selected={mode === "company"}
-              type="button"
-            >
-              업체명으로 찾기
-            </button>
+          <div className="relative min-w-0 flex-1">
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              aria-label="사업 분야 또는 업체명 검색"
+              className="h-12 border-0 bg-transparent pl-11 shadow-none"
+              placeholder={
+                mode === "field" ? "정보시스템 유지관리, 시설물 안전점검…" : "업체명 또는 사업자등록번호"
+              }
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+            />
           </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-              <Input
-                className="h-11 bg-background pl-11"
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={
-                  mode === "field"
-                    ? "제품 또는 사업 분야를 검색하세요"
-                    : "업체명 또는 사업자등록번호를 검색하세요"
-                }
-                aria-label={mode === "field" ? "분야 및 제품 검색" : "업체명 검색"}
-              />
-            </div>
-            <Button className="h-11 px-6" disabled={input.trim().length < 2 || activeQuery.isFetching}>
-              {activeQuery.isFetching ? <LoaderCircle className="animate-spin" /> : "검색"}
-            </Button>
-          </div>
-          {mode === "field" && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">예시</span>
-              {examples.map((example) => (
-                <button
-                  className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                  key={example}
-                  onClick={() => submit(example)}
-                  type="button"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-          )}
+          <Button className="h-12 px-5" disabled={input.trim().length < 2}>
+            검색 <ArrowRight />
+          </Button>
         </form>
-      </EntityDetailToolbar>
-
-      {activeQuery.isError && search && (
-        <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          검색 결과가 지연되고 있습니다. 검색어를 조금 더 구체적으로 입력해 주세요.
-        </p>
-      )}
-
-      {search ? (
-        <div className="mt-9 space-y-10">
-          {mode === "field" ? (
-            <section>
-              <div className="border-b pb-4">
-                <EntitySectionHeader
-                  title={`‘${search}’ 관련 실적 업체`}
-                  description="최근 3년 낙찰 공고의 제목과 업체를 연결한 결과입니다."
-                  meta={
-                    discovery.isFetching ? (
-                      <span className="inline-flex items-center gap-1 text-primary">
-                        <LoaderCircle className="size-3.5 animate-spin" /> 조회 중
-                      </span>
-                    ) : undefined
-                  }
-                />
-              </div>
-              {discovery.isLoading ? (
-                <div className="mt-4 grid gap-3">
-                  {[1, 2, 3].map((item) => (
-                    <Skeleton className="h-28 rounded-xl" key={item} />
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-4 overflow-hidden rounded-xl border bg-card">
-                  {discovery.data?.items.map((company) => {
-                    const award = company.representative_award;
-                    return (
-                      <article
-                        className="grid gap-3 border-b px-5 py-4 last:border-0 hover:bg-muted/35 md:grid-cols-[minmax(190px,1fr)_minmax(260px,1.7fr)_auto] md:items-center"
-                        key={company.business_registration_number}
-                      >
-                        <div className="min-w-0">
-                          <Link
-                            className="group inline-flex max-w-full items-center gap-2 font-bold hover:text-primary"
-                            to={`/companies/${company.business_registration_number}?name=${encodeURIComponent(company.name)}`}
-                          >
-                            <span className="truncate">{company.name}</span>
-                            <ArrowUpRight className="size-4 shrink-0 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                          </Link>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            관련 낙찰 {company.award_count}건 · {money(company.winning_amount)} · 거래기관{" "}
-                            {company.organization_count}곳
-                          </p>
-                        </div>
-                        <div className="min-w-0 border-l-0 md:border-l md:pl-5">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            최근 관련 실적
-                          </span>
-                          {award?.bid_notice_id ? (
-                            <Link
-                              className="mt-1 block truncate text-sm font-medium hover:text-primary hover:underline"
-                              to={`/notices/${encodeURIComponent(award.bid_notice_id)}`}
-                            >
-                              {award.notice_name}
-                            </Link>
-                          ) : (
-                            <p className="mt-1 truncate text-sm">
-                              {award?.notice_name ?? "실적 정보 확인 필요"}
-                            </p>
-                          )}
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {award?.organization_name ?? "기관 정보 없음"}
-                          </p>
-                        </div>
-                        <time className="text-xs text-muted-foreground">
-                          {day(company.latest_award_date)}
-                        </time>
-                      </article>
-                    );
-                  })}
-                  {!discovery.isFetching && discovery.data?.items.length === 0 && (
-                    <p className="p-10 text-center text-sm text-muted-foreground">
-                      관련 낙찰 실적이 있는 업체를 찾지 못했습니다.
-                    </p>
-                  )}
-                </div>
-              )}
-              {discovery.data?.partial && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  검색 결과가 많아 최근 낙찰 {discovery.data.sampled_award_count}건을 기준으로 업체를
-                  정리했습니다.
-                </p>
-              )}
-            </section>
-          ) : (
-            <section>
-              <div className="border-b pb-4">
-                <EntitySectionHeader
-                  title={`‘${search}’ 업체 검색 결과`}
-                  description="등록된 업체명 또는 사업자등록번호를 기준으로 찾았습니다."
-                  meta={
-                    names.isFetching ? (
-                      <span className="inline-flex items-center gap-1 text-primary">
-                        <LoaderCircle className="size-3.5 animate-spin" /> 조회 중
-                      </span>
-                    ) : undefined
-                  }
-                />
-              </div>
-              {names.isLoading ? (
-                <Skeleton className="mt-4 h-24 rounded-xl" />
-              ) : (
-                <div className="mt-4 overflow-hidden rounded-xl border bg-card">
-                  {names.data?.items.map((company) =>
-                    company.business_registration_number ? (
-                      <Link
-                        className="group flex items-center gap-4 border-b px-5 py-4 transition-colors last:border-0 hover:bg-muted/35"
-                        key={company.id}
-                        to={`/companies/${company.business_registration_number}?name=${encodeURIComponent(company.name ?? "업체명 확인 필요")}`}
-                      >
-                        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                          <Building2 size={18} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate">{company.name ?? "업체명 확인 필요"}</strong>
-                          <small className="mt-1 block truncate text-muted-foreground">
-                            사업자등록번호 {company.business_registration_number}
-                          </small>
-                        </span>
-                        <ArrowUpRight className="size-4 text-muted-foreground" />
-                      </Link>
-                    ) : null,
-                  )}
-                </div>
-              )}
-              {!names.isFetching && names.data?.items.length === 0 && (
-                <p className="mt-4 rounded-xl border p-10 text-center text-sm text-muted-foreground">
-                  검색된 업체가 없습니다.
-                </p>
-              )}
-            </section>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">검색 대상</span>
+          <button
+            type="button"
+            aria-pressed={mode === "field"}
+            className={`rounded-full px-3 py-1.5 ${mode === "field" ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground"}`}
+            onClick={() => setParams({ period: String(period) })}
+          >
+            사업 분야
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "company"}
+            className={`rounded-full px-3 py-1.5 ${mode === "company" ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground"}`}
+            onClick={() => setParams({ mode: "company", period: String(period) })}
+          >
+            업체명
+          </button>
+          {!search &&
+            mode === "field" &&
+            examples.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className="rounded-full border px-3 py-1.5 text-muted-foreground hover:border-primary hover:text-primary"
+                onClick={() => submit(example)}
+              >
+                {example}
+              </button>
+            ))}
+        </div>
+      </header>
+      {!search ? (
+        <div className="mt-6 text-center">
+          <Button variant="ghost" onClick={() => setShowSectors(!showSectors)} aria-expanded={showSectors}>
+            주요 분야 살펴보기
+          </Button>
+          {showSectors && (
+            <div className="mt-8 text-left">
+              <CompanySectorDiscovery />
+            </div>
           )}
         </div>
       ) : (
-        <section className="mt-10 border-y py-8 sm:py-10">
-          <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary">
-            <Sparkles size={19} />
-          </span>
-          <h2 className="mt-5 text-xl font-bold">이름을 몰라도 업체를 찾을 수 있습니다</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            필요한 제품이나 사업 분야를 입력하면 관련 낙찰 이력이 있는 업체와 실제 수행 실적을 함께
-            보여드립니다. 결과는 품질 평가나 추천이 아닌 공공조달 이력을 기준으로 합니다.
-          </p>
-          <div className="mt-6 grid border-y sm:grid-cols-3">
-            <div className="border-b py-4 sm:border-b-0 sm:border-r sm:pr-5">
-              <strong className="text-sm">1. 분야 검색</strong>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                제품명이나 수행하려는 사업을 입력합니다.
+        <>
+          <div className="mt-9 flex flex-wrap items-end justify-between gap-4 border-b pb-5">
+            <div>
+              <h2 className="text-xl font-semibold">
+                ‘{search}’ {mode === "field" ? "관련 계약 업체" : "업체 검색 결과"}
+              </h2>
+              <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                {mode === "field"
+                  ? `${fromYear}–${toYear}년 계약 검색 · 금액순 최대 100건에서 확인한 업체입니다. 전체 시장 순위가 아니며, 막대는 대표 계약의 전체 금액입니다.`
+                  : "업체명·사업자등록번호로 찾은 결과입니다. 관련 계약은 사업 분야 검색에서 확인하세요."}
               </p>
             </div>
-            <div className="border-b py-4 sm:border-b-0 sm:border-r sm:px-5">
-              <strong className="text-sm">2. 실적 비교</strong>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                낙찰 건수·금액·거래기관을 비교합니다.
-              </p>
-            </div>
-            <div className="py-4 sm:pl-5">
-              <strong className="text-sm">3. 기관 구성 확인</strong>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                업체 상세에서 주요 발주기관의 계약 비중을 확인합니다.
-              </p>
+            <div className="flex gap-3">
+              <label className="text-xs text-muted-foreground">
+                조회 기간
+                <select
+                  aria-label="조회 기간"
+                  className="mt-1 block rounded-lg border bg-background p-2 text-sm text-foreground"
+                  value={period}
+                  onChange={(event) =>
+                    update({ period: event.target.value, selected: undefined, compare: undefined })
+                  }
+                >
+                  {[1, 3, 5].map((year) => (
+                    <option key={year} value={year}>
+                      최근 {year}개년
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {mode === "field" && (
+                <label className="text-xs text-muted-foreground">
+                  결과 내 정렬
+                  <select
+                    aria-label="업체 정렬"
+                    className="mt-1 block rounded-lg border bg-background p-2 text-sm text-foreground"
+                    value={sort}
+                    onChange={(event) => update({ sort: event.target.value })}
+                  >
+                    <option value="count">관련 계약 건수순</option>
+                    <option value="amount">대표 계약금액순</option>
+                  </select>
+                </label>
+              )}
             </div>
           </div>
+          {request.isError ? (
+            <div role="alert" className="mt-5 rounded-xl border p-5">
+              <p>검색 결과를 불러오지 못했습니다.</p>
+              <Button className="mt-3" onClick={() => void request.refetch()}>
+                다시 시도
+              </Button>
+            </div>
+          ) : request.isLoading ? (
+            <div role="status" aria-label="업체 검색 중" className="mt-6 space-y-3">
+              {[1, 2, 3].map((key) => (
+                <Skeleton className="h-32 rounded-xl" key={key} />
+              ))}
+            </div>
+          ) : (
+            <div
+              className={`mt-6 grid items-start gap-6 ${selected ? "lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]" : ""}`}
+            >
+              <section aria-label="업체 후보" className="min-w-0">
+                {contracts.data?.partial && mode === "field" && (
+                  <p className="mb-4 rounded-lg bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+                    일부 결과 · 조회된 계약 {contracts.data.sampled_contract_count}건 기준
+                    {contracts.data.unidentified_contract_count > 0
+                      ? ` · 업체 식별이 확인되지 않은 계약 ${contracts.data.unidentified_contract_count}건 제외`
+                      : ""}
+                  </p>
+                )}
+                {names.data?.truncated && mode === "company" && (
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    업체 검색 결과 일부만 표시됩니다. 검색어를 구체적으로 입력해 주세요.
+                  </p>
+                )}
+                <ol className="overflow-hidden rounded-2xl border bg-card">
+                  {items.slice(0, limit).map((item, index) => {
+                    const active =
+                      selected?.business_registration_number === item.business_registration_number;
+                    const representative = item.contracts[0];
+                    return (
+                      <li
+                        key={item.business_registration_number}
+                        className={`border-b p-5 last:border-0 sm:p-6 ${active ? "bg-primary/[.06] shadow-[inset_3px_0_0_var(--primary)]" : "hover:bg-muted/25"}`}
+                      >
+                        <button
+                          type="button"
+                          aria-label={`${item.name} 분석 보기`}
+                          aria-pressed={active}
+                          onClick={(event) => {
+                            selectedTrigger.current = event.currentTarget;
+                            update({ selected: item.business_registration_number });
+                          }}
+                          className="block w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <div className="flex items-baseline gap-4">
+                            <span className="text-sm tabular-nums text-muted-foreground">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
+                            <h3 className="min-w-0 flex-1 text-lg font-bold">{item.name}</h3>
+                            {representative && (
+                              <span
+                                className="shrink-0 text-lg font-semibold tabular-nums"
+                                title={formatExactMoney(representative.amount)}
+                              >
+                                {formatCompactMoney(representative.amount)}
+                              </span>
+                            )}
+                          </div>
+                          {representative && (
+                            <div className="ml-8 mt-3 h-1.5 rounded-full bg-muted" aria-hidden="true">
+                              {representative.amount != null && (
+                                <div
+                                  className="h-full rounded-full bg-primary/75"
+                                  style={{
+                                    width: `${(Math.max(0, representative.amount) / maximum) * 100}%`,
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                          <p className="ml-8 mt-3 text-xs text-muted-foreground">
+                            {mode === "field"
+                              ? `표본 내 관련 계약 ${item.contract_count}건 · 표시 금액은 대표 계약 전체 금액`
+                              : `사업자등록번호 ${item.business_registration_number}`}
+                          </p>
+                          {representative && (
+                            <p className="ml-8 mt-3 truncate text-sm">
+                              <span className="mr-2 text-xs text-muted-foreground">대표 실적</span>
+                              {representative.name ?? "계약명 확인 필요"}
+                            </p>
+                          )}
+                        </button>
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`${compared.includes(item.business_registration_number) ? "비교에서 제외" : "비교 추가"} ${item.name}`}
+                            aria-pressed={compared.includes(item.business_registration_number)}
+                            disabled={
+                              !compared.includes(item.business_registration_number) && comparison.length >= 3
+                            }
+                            onClick={() => toggleCompare(item.business_registration_number)}
+                          >
+                            {compared.includes(item.business_registration_number)
+                              ? "비교에서 제외"
+                              : "비교 추가"}
+                            <span className="sr-only"> {item.name}</span>
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {!items.length && (
+                  <div className="rounded-xl border p-10 text-center">
+                    <p className="font-medium">검색된 업체가 없습니다.</p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      더 짧은 사업명으로 검색하거나 업체명 검색을 이용해 주세요.
+                    </p>
+                  </div>
+                )}
+                {items.length > limit && (
+                  <Button className="mt-4 w-full" variant="outline" onClick={() => setLimit(limit + 20)}>
+                    업체 더 보기
+                  </Button>
+                )}
+                {!selected && items.length > 0 && (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    업체를 선택하면 실적과 경쟁관계가 열립니다.
+                  </p>
+                )}
+              </section>
+              {selected && desktop && (
+                <aside aria-label="선택 업체 분석" className="min-w-0 rounded-2xl border bg-card p-6">
+                  <div className="mb-4 flex justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => update({ selected: undefined })}>
+                      선택 해제 <X />
+                    </Button>
+                  </div>
+                  {panel}
+                </aside>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      {!desktop && (
+        <Dialog.Root
+          open={Boolean(selected)}
+          onOpenChange={(open) => {
+            if (!open) update({ selected: undefined });
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
+            <Dialog.Content
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                selectedTrigger.current?.focus();
+              }}
+              className="fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl border bg-background p-6 shadow-xl"
+            >
+              <Dialog.Title className="sr-only">선택 업체 분석</Dialog.Title>
+              <Dialog.Description className="sr-only">
+                선택한 업체의 실적, 경쟁관계와 계약 근거를 확인합니다.
+              </Dialog.Description>
+              <Dialog.Close asChild>
+                <Button className="mb-4 ml-auto flex" variant="ghost" aria-label="업체 분석 닫기">
+                  <X />
+                </Button>
+              </Dialog.Close>
+              {panel}
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
+      {comparison.length > 0 && (
+        <div className="sticky bottom-4 z-20 mt-8 flex flex-wrap items-center gap-3 rounded-2xl border bg-background/95 p-4 shadow-lg backdrop-blur">
+          <span className="text-xs text-muted-foreground">비교 후보 {comparison.length}/3</span>
+          {comparison.map((item) => (
+            <Button
+              key={item.business_registration_number}
+              variant="secondary"
+              size="sm"
+              onClick={() => toggleCompare(item.business_registration_number)}
+            >
+              {item.name}
+              <X aria-label={`${item.name} 비교 제외`} />
+            </Button>
+          ))}
+          <Button
+            className="ml-auto"
+            disabled={comparison.length < 2}
+            onClick={() => setCompareOpen(!compareOpen)}
+            aria-expanded={compareOpen}
+          >
+            {compareOpen ? "비교 접기" : "비교하기"}
+          </Button>
+        </div>
+      )}
+      {compareOpen && comparison.length >= 2 && (
+        <section aria-label="업체 실적 비교" className="mt-8">
+          <h2 className="text-xl font-semibold">업체 실적 비교</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            동일 기간의 전체 분야 실적을 비교합니다. 검색어에 해당하는 계약만의 합계가 아닙니다.
+          </p>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {comparison.map((item) => (
+              <div key={item.business_registration_number} className="rounded-2xl border p-5">
+                <CompanyExplorerPanel candidate={item} fromYear={fromYear} toYear={toYear} compact />
+              </div>
+            ))}
+          </div>
         </section>
+      )}
+      {search && (
+        <p className="mt-8 text-xs text-muted-foreground">
+          기관·공고의 자세한 분석도 이어서 확인할 수 있습니다.{" "}
+          <Link className="ml-2 text-primary hover:underline" to="/organizations">
+            기관 분석
+          </Link>
+          <Link className="ml-3 text-primary hover:underline" to="/notices">
+            공고 탐색
+          </Link>
+        </p>
       )}
     </PageContainer>
   );

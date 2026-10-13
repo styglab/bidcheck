@@ -1,9 +1,14 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Outlet, Route, Routes, useSearchParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { PublicLayout } from "./PublicLayout";
 
 const CompaniesPage = lazy(() =>
   import("../pages/CompaniesPage").then(({ CompaniesPage }) => ({ default: CompaniesPage })),
+);
+const NetworkExplorerPage = lazy(() =>
+  import("../pages/NetworkExplorerPage").then(({ NetworkExplorerPage }) => ({
+    default: NetworkExplorerPage,
+  })),
 );
 const LandingPage = lazy(() =>
   import("../pages/LandingPage").then(({ LandingPage }) => ({ default: LandingPage })),
@@ -65,21 +70,6 @@ function LazyPageBoundary() {
   );
 }
 
-function LegacyRelationsRedirect() {
-  const [params] = useSearchParams();
-  const seedType = params.get("seed_type");
-  const seedId = params.get("seed_id");
-  const seedName = params.get("seed_name");
-  if (seedType === "organization" && seedId) {
-    return <Navigate replace to={`/organizations/${encodeURIComponent(seedId)}`} />;
-  }
-  if (seedType === "company" && seedId) {
-    const name = seedName ? `?name=${encodeURIComponent(seedName)}` : "";
-    return <Navigate replace to={`/companies/${encodeURIComponent(seedId)}${name}`} />;
-  }
-  return <Navigate replace to="/organizations" />;
-}
-
 export function App() {
   return (
     <Routes>
@@ -89,7 +79,7 @@ export function App() {
           <Route path="explore" element={<Navigate replace to="/notices" />} />
           <Route path="opportunities" element={<Navigate replace to="/organizations" />} />
           <Route path="markets" element={<Navigate replace to="/organizations" />} />
-          <Route path="relations" element={<LegacyRelationsRedirect />} />
+          <Route path="relations" element={<NetworkExplorerPage />} />
           <Route path="mcp" element={<McpPage />} />
           <Route path="contact" element={<ContactPage />} />
           <Route path="notices" element={<NoticesPage />} />

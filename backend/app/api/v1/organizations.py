@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.integrations.teoria import teoria_client
 from app.services import search_service
+from app.services.procurement_cache import cached_runtime_read
 from app.services.teoria_adapter import award, contract, objects_of, organization, runtime_outcome
 
 router = APIRouter()
@@ -159,7 +160,7 @@ async def get_organization_procurement_profile(
         period_from_year > period_to_year or period_to_year > current_year
     ):
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "analyze_organization_procurement_profile",
         {
             "organization_code": organization_code,
@@ -200,7 +201,7 @@ async def get_organization_supplier_entries(
     current_year = datetime.now(UTC).year
     if target_year > current_year:
         raise HTTPException(422, detail="대상 연도가 올바르지 않습니다.")
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "search_organization_supplier_entries",
         {
             "organization_code": organization_code,
@@ -277,7 +278,7 @@ async def get_organization_procurement_activity(
     current_year = datetime.now(UTC).year
     if period_from_year > period_to_year or period_to_year > current_year:
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "search_procurement_activity",
         {
             "organization_code": organization_code,
@@ -313,6 +314,8 @@ async def get_organization_company_relationship(
     ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    view_mode: str = Query("history", pattern="^(history|network_edge)$"),
+    snapshot_id: str | None = Query(None, max_length=100),
 ):
     current_year = datetime.now(UTC).year
     if (period_from_year is None) != (period_to_year is None):
@@ -322,7 +325,7 @@ async def get_organization_company_relationship(
     ):
         raise HTTPException(422, detail="조회 연도 범위가 올바르지 않습니다.")
     number = "".join(ch for ch in company_number if ch.isdigit())
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "get_organization_company_relationship",
         {
             "organization_code": organization_code,
@@ -339,6 +342,8 @@ async def get_organization_company_relationship(
             **({"work_type": work_type} if work_type else {}),
             "page": page,
             "page_size": page_size,
+            **({"view_mode": view_mode} if view_mode == "network_edge" else {}),
+            **({"snapshot_id": snapshot_id} if snapshot_id and view_mode == "network_edge" else {}),
         },
         max_objects=500,
     )

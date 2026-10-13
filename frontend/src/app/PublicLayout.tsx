@@ -1,6 +1,6 @@
 import { Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ThemeToggle } from "../features/theme/ThemeToggle";
 import { GlobalSearch } from "@/components/search/global-search";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ const primaryNavigation = [
   { label: "공고 탐색", to: "/notices" },
   { label: "기관 분석", to: "/organizations" },
   { label: "업체 분석", to: "/companies" },
+  { label: "관계 탐색", to: "/relations" },
 ] as const;
 
 const desktopNavLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -26,6 +27,7 @@ const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
   );
 
 export function PublicLayout() {
+  const isExplorer = useLocation().pathname === "/relations";
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -74,13 +76,13 @@ export function PublicLayout() {
             ))}
           </nav>
 
-          <GlobalSearch className="ml-auto hidden w-full max-w-[26rem] flex-1 md:block" />
+          {!isExplorer && <GlobalSearch className="ml-auto hidden w-full max-w-[26rem] flex-1 md:block" />}
 
           <div className="ml-auto flex shrink-0 items-center gap-1 md:ml-0">
             <Button
               aria-expanded={searchOpen}
               aria-label={searchOpen ? "통합검색 닫기" : "통합검색 열기"}
-              className="md:hidden"
+              className={isExplorer ? "hidden" : "md:hidden"}
               onClick={() => {
                 setSearchOpen((open) => !open);
                 setMenuOpen(false);
@@ -118,7 +120,7 @@ export function PublicLayout() {
             </Button>
           </div>
 
-          {searchOpen && (
+          {searchOpen && !isExplorer && (
             <div className="absolute inset-x-4 top-[calc(100%+.5rem)] rounded-xl border bg-popover p-2 shadow-xl md:hidden">
               <GlobalSearch autoFocus className="w-full" onSelect={() => setSearchOpen(false)} />
             </div>

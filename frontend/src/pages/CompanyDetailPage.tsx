@@ -1,4 +1,5 @@
 import { CompanyParticipationTrend } from "@/features/company-context/CompanyParticipationTrend";
+import { lazy, Suspense } from "react";
 import { participationCollectionLabel } from "@/features/company-context/participation-presentation";
 import { CompanyOrganizationsSection } from "@/features/company-context/CompanyOrganizationsSection";
 import { procurementWorkTypeLabels as workTypeLabels } from "@/shared/procurement/presentation";
@@ -34,12 +35,20 @@ import { CompanyParticipationPanel } from "@/features/company-context/CompanyPar
 import { formatCompactMoney as money } from "@/shared/format/money";
 import { procurementDistributionColor } from "@/shared/ui/procurement-chart-palette";
 
+const CompanyVisualOverview = lazy(() =>
+  import("@/features/company-context/CompanyVisualOverview").then(({ CompanyVisualOverview }) => ({
+    default: CompanyVisualOverview,
+  })),
+);
+
 export function CompanyDetailPage() {
   const view = useCompanyDetailPage();
   const {
     params,
     businessNumber,
     currentYear,
+    fromYear,
+    toYear,
     earliestYear,
     workType,
     participationPage,
@@ -123,6 +132,7 @@ export function CompanyDetailPage() {
       {procurement.data && (
         <>
           <EntityDetailContextBar
+            className="!mx-0"
             appliedFilterCount={appliedProcurementFilters.length}
             compactConditionSummary={`${periodLabel} · ${
               appliedProcurementFilters.length > 0 ? `필터 ${appliedProcurementFilters.length}` : "전체"
@@ -190,8 +200,8 @@ export function CompanyDetailPage() {
             >
               {tab === "relationships" && (
                 <EntityDetailSection
-                  title="입찰·수주 현황"
-                  description="입찰 참여부터 낙찰·계약까지 핵심 실적을 보여줍니다."
+                  title="관계·수주 분석"
+                  description="거래기관과 관측 경쟁업체를 선택하고, 수주 분포와 연도별 실적을 확인하세요."
                   meta={`${periodLabel} 기준`}
                 >
                   <p className="mt-5 rounded-xl bg-muted/35 px-4 py-3.5 text-[15px] leading-7 sm:px-5">
@@ -253,218 +263,236 @@ export function CompanyDetailPage() {
                       }
                     />
                   </EntityMetricGrid>
-                  <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
-                    <div className="lg:col-span-2">
-                      <EntitySectionHeader
-                        title="주요 활동 분야"
-                        description="주로 참여하는 분야와 수주 성과입니다."
+                  <Suspense fallback={<Skeleton className="mt-7 h-96 rounded-2xl" />}>
+                    <CompanyVisualOverview
+                      key={`${businessNumber}-${procurementConditionSummary}`}
+                      name={name}
+                      profile={procurement.data}
+                      competitors={competitors.isPlaceholderData ? undefined : competitors.data}
+                      competitorLoading={competitors.isLoading || competitors.isPlaceholderData}
+                      competitorError={competitors.isError}
+                      onRetryCompetitors={() => void competitors.refetch()}
+                      fromYear={fromYear}
+                      toYear={toYear}
+                    />
+                  </Suspense>
+                  <details className="mt-9 rounded-2xl border p-5">
+                    <summary className="cursor-pointer text-sm font-semibold">
+                      분야별 실적·참여 이력·거래 구조 세부 통계
+                    </summary>
+                    <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
+                      <div className="lg:col-span-2">
+                        <EntitySectionHeader
+                          title="주요 활동 분야"
+                          description="주로 참여하는 분야와 수주 성과입니다."
+                        />
+                        <DataTable className="mt-5" minWidth={640}>
+                          <thead>
+                            <tr>
+                              <th>분야</th>
+                              <th className="text-right">참여</th>
+                              <th className="text-right">낙찰</th>
+                              <th className="text-right">성공률</th>
+                              <th className="text-right">계약금액</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visibleFields.slice(0, 8).map((field) => {
+                              const label =
+                                field.display_name ??
+                                field.field_name ??
+                                field.middle_category ??
+                                field.large_category ??
+                                "미분류";
+                              const participation = field.participation_count ?? 0;
+                              const awards = field.award_event_count ?? 0;
+                              return (
+                                <tr key={`${label}-${field.display_code ?? field.field_code ?? ""}`}>
+                                  <td className="font-medium">{label}</td>
+                                  <td className="text-right">{participation.toLocaleString("ko-KR")}건</td>
+                                  <td className="text-right">{awards.toLocaleString("ko-KR")}건</td>
+                                  <td className="text-right">
+                                    {field.award_success_rate != null
+                                      ? `${(field.award_success_rate * 100).toFixed(1)}%`
+                                      : "-"}
+                                  </td>
+                                  <td className="text-right font-semibold">
+                                    {money(field.attributed_contract_amount)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </DataTable>
+                        {!visibleFields.length && (
+                          <p className="p-6 text-center text-sm text-muted-foreground">
+                            분야 데이터가 없습니다.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
+                      <CompanyParticipationTrend
+                        analysis={procurement.data?.participation_analysis}
+                        contractYears={procurement.data?.yearly_activity ?? []}
+                        currentYear={currentYear}
                       />
-                      <DataTable className="mt-5" minWidth={640}>
-                        <thead>
-                          <tr>
-                            <th>분야</th>
-                            <th className="text-right">참여</th>
-                            <th className="text-right">낙찰</th>
-                            <th className="text-right">성공률</th>
-                            <th className="text-right">계약금액</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visibleFields.slice(0, 8).map((field) => {
-                            const label =
-                              field.display_name ??
-                              field.field_name ??
-                              field.middle_category ??
-                              field.large_category ??
-                              "미분류";
-                            const participation = field.participation_count ?? 0;
-                            const awards = field.award_event_count ?? 0;
-                            return (
-                              <tr key={`${label}-${field.display_code ?? field.field_code ?? ""}`}>
-                                <td className="font-medium">{label}</td>
-                                <td className="text-right">{participation.toLocaleString("ko-KR")}건</td>
-                                <td className="text-right">{awards.toLocaleString("ko-KR")}건</td>
-                                <td className="text-right">
-                                  {field.award_success_rate != null
-                                    ? `${(field.award_success_rate * 100).toFixed(1)}%`
-                                    : "-"}
+                    </div>
+                    <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
+                      <EntitySectionHeader
+                        title="발주기관 구조"
+                        description="계약금액이 어떤 발주기관에 분포하는지 요약합니다."
+                      />
+                      <EntityMetricGrid className="mt-5 grid-cols-2">
+                        <EntityMetric
+                          className="border-r pr-5"
+                          label="발주기관"
+                          value={
+                            <EntityMetricValue
+                              value={summary?.organization_count.toLocaleString("ko-KR") ?? "-"}
+                              unit="개"
+                            />
+                          }
+                        />
+                        <EntityMetric
+                          className="pl-5"
+                          label="상위 5개 기관 비중"
+                          value={
+                            organizationAmountTotal > 0
+                              ? `${(topFiveOrganizationShare * 100).toFixed(1)}%`
+                              : "산출 불가"
+                          }
+                        />
+                      </EntityMetricGrid>
+                      <EntityDetailPanel className="mt-5" muted={false}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-sm">계약금액 분포</strong>
+                          <span className="text-xs text-muted-foreground">선택 기간·분야 기준</span>
+                        </div>
+                        {organizationAmountTotal > 0 ? (
+                          <>
+                            <div
+                              className="mt-4 flex h-9 overflow-hidden rounded-lg bg-muted"
+                              aria-label="발주기관별 계약금액 분포 요약"
+                            >
+                              {[
+                                ["상위 5개", topFiveOrganizationShare, procurementDistributionColor.leading],
+                                [
+                                  overviewContractedOrganizations.length > 5
+                                    ? `6–${overviewContractedOrganizations.length}위`
+                                    : "6위 이하",
+                                  middleOrganizationShare,
+                                  procurementDistributionColor.middle,
+                                ],
+                                [
+                                  remainingOrganizationCount > 0
+                                    ? `나머지 ${remainingOrganizationCount.toLocaleString("ko-KR")}개`
+                                    : "나머지",
+                                  remainingOrganizationShare,
+                                  procurementDistributionColor.remainder,
+                                ],
+                              ].map(([label, ratio, className]) =>
+                                typeof ratio === "number" && ratio > 0 ? (
+                                  <span
+                                    className={`grid min-w-0 place-items-center px-2 text-xs font-semibold ${className} ${String(label).startsWith("나머지") ? "text-foreground" : "text-white"}`}
+                                    key={String(label)}
+                                    style={{ width: `${ratio * 100}%` }}
+                                  >
+                                    {ratio >= 0.12 ? `${(ratio * 100).toFixed(1)}%` : ""}
+                                  </span>
+                                ) : null,
+                              )}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                              {[
+                                ["상위 5개", topFiveOrganizationShare],
+                                [
+                                  overviewContractedOrganizations.length > 5
+                                    ? `6–${overviewContractedOrganizations.length}위`
+                                    : "6위 이하",
+                                  middleOrganizationShare,
+                                ],
+                                [
+                                  remainingOrganizationCount > 0
+                                    ? `나머지 ${remainingOrganizationCount.toLocaleString("ko-KR")}개`
+                                    : "나머지",
+                                  remainingOrganizationShare,
+                                ],
+                              ].map(([label, ratio]) => (
+                                <span key={String(label)}>
+                                  <span className="text-muted-foreground">{label}</span>{" "}
+                                  <strong>{(Number(ratio) * 100).toFixed(1)}%</strong>
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+                            기관별 계약금액이 충분하지 않아 분포를 산출할 수 없습니다.
+                          </p>
+                        )}
+                        <div className="mt-5 border-t pt-4 text-right">
+                          <EntityDetailAction onClick={() => setTab("organizations")}>
+                            발주기관 자세히 보기
+                          </EntityDetailAction>
+                        </div>
+                      </EntityDetailPanel>
+                    </div>
+                    <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
+                      <EntitySectionHeader
+                        title="주요 경쟁 업체"
+                        description="동일한 입찰에 자주 참여한 업체입니다."
+                      />
+                      {competitors.isLoading && <Skeleton className="mt-5 h-44 rounded-xl" />}
+                      {!competitors.isLoading && (
+                        <DataTable className="mt-5" minWidth={520}>
+                          <thead>
+                            <tr>
+                              <th>업체</th>
+                              <th className="text-right">동시 참여</th>
+                              <th className="text-right">최근 동시 참여</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(competitors.data?.items ?? []).map((company) => (
+                              <tr key={company.company_number}>
+                                <td>
+                                  <Link
+                                    className="font-semibold hover:underline"
+                                    to={entityDetailPath("company", company.company_number, {
+                                      source: "relationship",
+                                      params,
+                                      name: company.company_name,
+                                    })}
+                                  >
+                                    {company.company_name}
+                                  </Link>
                                 </td>
-                                <td className="text-right font-semibold">
-                                  {money(field.attributed_contract_amount)}
+                                <td className="text-right font-medium">
+                                  {company.co_participation_count.toLocaleString("ko-KR")}회
+                                </td>
+                                <td className="text-right text-muted-foreground">
+                                  {company.latest_co_participation_date?.slice(0, 7) ?? "-"}
                                 </td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </DataTable>
-                      {!visibleFields.length && (
-                        <p className="p-6 text-center text-sm text-muted-foreground">
-                          분야 데이터가 없습니다.
+                            ))}
+                            {!competitors.data?.items.length && (
+                              <tr>
+                                <td className="app-data-table-empty" colSpan={3}>
+                                  확인된 경쟁 업체가 없습니다.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </DataTable>
+                      )}
+                      {competitors.data?.data_completeness?.status === "partial" && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          개찰 상위 10개 업체 및 낙찰업체로 확인 가능한 범위입니다.
                         </p>
                       )}
                     </div>
-                  </div>
-                  <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
-                    <CompanyParticipationTrend
-                      analysis={procurement.data?.participation_analysis}
-                      contractYears={procurement.data?.yearly_activity ?? []}
-                      currentYear={currentYear}
-                    />
-                  </div>
-                  <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
-                    <EntitySectionHeader
-                      title="발주기관 구조"
-                      description="계약금액이 어떤 발주기관에 분포하는지 요약합니다."
-                    />
-                    <EntityMetricGrid className="mt-5 grid-cols-2">
-                      <EntityMetric
-                        className="border-r pr-5"
-                        label="발주기관"
-                        value={
-                          <EntityMetricValue
-                            value={summary?.organization_count.toLocaleString("ko-KR") ?? "-"}
-                            unit="개"
-                          />
-                        }
-                      />
-                      <EntityMetric
-                        className="pl-5"
-                        label="상위 5개 기관 비중"
-                        value={
-                          organizationAmountTotal > 0
-                            ? `${(topFiveOrganizationShare * 100).toFixed(1)}%`
-                            : "산출 불가"
-                        }
-                      />
-                    </EntityMetricGrid>
-                    <EntityDetailPanel className="mt-5" muted={false}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <strong className="text-sm">계약금액 분포</strong>
-                        <span className="text-xs text-muted-foreground">선택 기간·분야 기준</span>
-                      </div>
-                      {organizationAmountTotal > 0 ? (
-                        <>
-                          <div
-                            className="mt-4 flex h-9 overflow-hidden rounded-lg bg-muted"
-                            aria-label="발주기관별 계약금액 분포 요약"
-                          >
-                            {[
-                              ["상위 5개", topFiveOrganizationShare, procurementDistributionColor.leading],
-                              [
-                                overviewContractedOrganizations.length > 5
-                                  ? `6–${overviewContractedOrganizations.length}위`
-                                  : "6위 이하",
-                                middleOrganizationShare,
-                                procurementDistributionColor.middle,
-                              ],
-                              [
-                                remainingOrganizationCount > 0
-                                  ? `나머지 ${remainingOrganizationCount.toLocaleString("ko-KR")}개`
-                                  : "나머지",
-                                remainingOrganizationShare,
-                                procurementDistributionColor.remainder,
-                              ],
-                            ].map(([label, ratio, className]) =>
-                              typeof ratio === "number" && ratio > 0 ? (
-                                <span
-                                  className={`grid min-w-0 place-items-center px-2 text-xs font-semibold ${className} ${String(label).startsWith("나머지") ? "text-foreground" : "text-white"}`}
-                                  key={String(label)}
-                                  style={{ width: `${ratio * 100}%` }}
-                                >
-                                  {ratio >= 0.12 ? `${(ratio * 100).toFixed(1)}%` : ""}
-                                </span>
-                              ) : null,
-                            )}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
-                            {[
-                              ["상위 5개", topFiveOrganizationShare],
-                              [
-                                overviewContractedOrganizations.length > 5
-                                  ? `6–${overviewContractedOrganizations.length}위`
-                                  : "6위 이하",
-                                middleOrganizationShare,
-                              ],
-                              [
-                                remainingOrganizationCount > 0
-                                  ? `나머지 ${remainingOrganizationCount.toLocaleString("ko-KR")}개`
-                                  : "나머지",
-                                remainingOrganizationShare,
-                              ],
-                            ].map(([label, ratio]) => (
-                              <span key={String(label)}>
-                                <span className="text-muted-foreground">{label}</span>{" "}
-                                <strong>{(Number(ratio) * 100).toFixed(1)}%</strong>
-                              </span>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <p className="mt-4 rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-                          기관별 계약금액이 충분하지 않아 분포를 산출할 수 없습니다.
-                        </p>
-                      )}
-                      <div className="mt-5 border-t pt-4 text-right">
-                        <EntityDetailAction onClick={() => setTab("organizations")}>
-                          발주기관 자세히 보기
-                        </EntityDetailAction>
-                      </div>
-                    </EntityDetailPanel>
-                  </div>
-                  <div className="mt-9 border-t pt-9 sm:mt-12 sm:pt-12">
-                    <EntitySectionHeader
-                      title="주요 경쟁 업체"
-                      description="동일한 입찰에 자주 참여한 업체입니다."
-                    />
-                    {competitors.isLoading && <Skeleton className="mt-5 h-44 rounded-xl" />}
-                    {!competitors.isLoading && (
-                      <DataTable className="mt-5" minWidth={520}>
-                        <thead>
-                          <tr>
-                            <th>업체</th>
-                            <th className="text-right">동시 참여</th>
-                            <th className="text-right">최근 동시 참여</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(competitors.data?.items ?? []).map((company) => (
-                            <tr key={company.company_number}>
-                              <td>
-                                <Link
-                                  className="font-semibold hover:underline"
-                                  to={entityDetailPath("company", company.company_number, {
-                                    source: "relationship",
-                                    params,
-                                    name: company.company_name,
-                                  })}
-                                >
-                                  {company.company_name}
-                                </Link>
-                              </td>
-                              <td className="text-right font-medium">
-                                {company.co_participation_count.toLocaleString("ko-KR")}회
-                              </td>
-                              <td className="text-right text-muted-foreground">
-                                {company.latest_co_participation_date?.slice(0, 7) ?? "-"}
-                              </td>
-                            </tr>
-                          ))}
-                          {!competitors.data?.items.length && (
-                            <tr>
-                              <td className="app-data-table-empty" colSpan={3}>
-                                확인된 경쟁 업체가 없습니다.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </DataTable>
-                    )}
-                    {competitors.data?.data_completeness?.status === "partial" && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        개찰 상위 10개 업체 및 낙찰업체로 확인 가능한 범위입니다.
-                      </p>
-                    )}
-                  </div>
+                  </details>
                 </EntityDetailSection>
               )}
 

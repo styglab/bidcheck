@@ -7,6 +7,7 @@ import { EntityDetailToolbar, EntitySectionHeader } from "@/components/common/en
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RelationshipDiscoverySection } from "@/features/relationships/RelationshipDiscoverySection";
 import { useOrganizationSearch } from "../features/organizations/api";
 
 export function OrganizationsPage() {
@@ -24,9 +25,9 @@ export function OrganizationsPage() {
   return (
     <PageContainer className="max-w-6xl !pt-7 sm:!pt-10">
       <AnalysisIndexHeader
-        description="기관의 공고·낙찰·계약 이력과 주요 계약업체 구조를 확인할 수 있습니다."
         label="기관 분석"
-        title="발주기관을 분석하세요"
+        title="기관의 거래 구조를 살펴보세요"
+        description="기관별 계약업체 분포를 하나씩 넘겨 살펴보세요."
       />
       <EntityDetailToolbar>
         <form
@@ -105,15 +106,7 @@ export function OrganizationsPage() {
           )}
         </>
       ) : (
-        <div className="mt-10 border-y py-16 text-center">
-          <span className="mx-auto grid size-11 place-items-center rounded-lg bg-primary/10 text-primary">
-            <Landmark size={22} />
-          </span>
-          <h2 className="mt-4 text-lg font-semibold">기관명이나 기관코드를 입력하세요</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            발주 공고와 연결된 낙찰·계약업체를 확인할 수 있습니다.
-          </p>
-        </div>
+        <RelationshipDiscoverySection />
       )}
     </PageContainer>
   );

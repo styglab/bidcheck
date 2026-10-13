@@ -75,6 +75,45 @@ Content-Type: application/json
 
 ## 입찰체크의 기본 호출 순서
 
+### 경쟁 탐색 Runtime Capability와 연동 현황
+
+2026-10-13 Runtime의 `/v1/capabilities`에서 신규 5개를 포함한 34개 Capability를 확인했다.
+현재 입찰체크의 통합 검색은 `autocomplete_procurement_entities`, 분야 선택은
+`get_procurement_classification_catalog`를 사용한다. 공식 품목 코드가 선택된 관계
+그래프는 `get_procurement_network`의 2단계 결과를 일괄 조회하고, 분야 패널은
+`analyze_procurement_field_market`의 수집 범위 내 집계를 표시한다. 기관–업체 링크의
+근거는 같은 snapshot의 `get_organization_company_relationship(view_mode=network_edge)`로
+조회한다. `get_procurement_region_filter_options`는 읽기 API만 준비했으며, 네트워크와
+분야 시장의 지역 필터는 Runtime이 지원할 때까지 화면에서 적용하지 않는다.
+아래 응답시간은 단회 측정치나 협의 목표이며 검증된 P95가 아니다.
+
+- `autocomplete_procurement_entities`: 공고·기관·조달업체·공식 분야/품목의 이름·번호를
+  Runtime 내부 검색 인덱스에서 조회한다. 외부 기업정보 API와 실적 전체 집계를 호출하지 않는다.
+  공고 후보에 기관 코드·기관명·업무구분·공식 분류·명시적 소재지와 지역 기준을 포함해
+  후보 클릭 후 별도 시장 분석 없이 필터를 설정한다. 누락값은 null로 보존한다.
+  query, types, limit(기본 8, 최대 20), cursor를 지원하고 prefix·초성·번호 검색과
+  취소 가능한 요청, 정규화한 질의 캐시를 제공한다. 응답 목표는 P95 200ms 이하로 협의한다.
+- `get_procurement_network`: root_type/id 또는 field_code, 필수 분야, work_type,
+  region_basis/code, period_from/to_year, depth(최대 2), first_hop_limit,
+  second_hop_limit을 입력받고 nodes·edges·관계 요약을 한 번에 반환한다. 업체마다
+  `analyze_company_procurement_profile`을 호출하는 N+1 구조를 피하고 관계 전용 읽기 모델과
+  서버의 일괄 집계·캐시를 사용한다. 노드 쌍당 edge 하나에 계약·낙찰·관측 참여·공동 참여를
+  분리 보관한다. omitted_node/edge_count, truncation, coverage, updated_at와 집계 기준을
+  반환한다. 응답 목표는 P95 캐시 1초, 최초 조회 2초 이하로 협의한다.
+- 기관–업체 관계는 기존 `get_organization_company_relationship`을 확장하는 계획이다.
+  기존 동작은 보존하고 네트워크와 같은 필터·집계·snapshot을 사용하는 명시적 조회 모드를
+  추가한다. `get_procurement_relation_detail`은 신규로 만들지 않는다.
+- 업체/기관의 노드 패널은 별도 프로필 조회를 유지한다. 분야의 전체 연도별 시장 집계,
+  공식 분류 카탈로그와 지역 기준별 필터도 Runtime의 정식 Capability로 추가한다.
+
+기존 최초 계약일 기준·변경 버전 병합·업체 식별 정규화·공동수급 귀속금액과 참여 원천의
+관측 범위는 새 읽기 모델에서도 유지한다. 준비되지 않은 지역/분류는 지원된다고 응답하지
+않는다. 응답 지연을 단계별 SQL·직렬화·외부 호출·캐시 적중 시간으로 계측해 원인을 확인한다.
+
+입찰체크에서 수행한 단회 확인(2026-10-13, 키워드 '유지관리')은 2024년부터의
+`latest_only` 공고 검색 7.49초, 최근 90일 `all` 공고 검색 0.95초였다. 서로 다른 조회
+범위·차수 조건의 관측값이며 전체 성능이나 P95를 보장하는 벤치마크가 아니다.
+
 ### 1. 공고 검색
 
 ```http
@@ -584,3 +623,77 @@ POST /v1/capabilities/search_public_procurement_contracts:execute
 - 401, 404, 409, 422, 502, 504를 구분한다.
 - token과 사업자정보가 로그에 평문으로 남지 않는다.
 - 평가 결과와 함께 기준일, 참가방식, Registry·ruleset·evaluator 버전 또는 지문을 보관한다.
+
+## 분석 첫 화면의 Runtime 조합
+
+`/api/v1/home/relationships?period_years=3`는 `search_bid_awards`에서 최근 90일
+낙찰 최대 100건을 조회하고 확인된 기관 기본 12곳(organization_limit, 최대 24곳)의 `analyze_organization_procurement_profile`
+관계 통계를 사용한다. 성공한 기관의 `search_organization_supplier_entries`를 별도로
+호출해 종료 연도 `entry_status=first_observed` 관계를 최대 3곳씩 조회한다.
+`items`는 기간 전체 주요 관계, `new_relationships`는 종료 연도 신규 관측 관계다.
+`organizations`에는 기관별 관계 최대 30개와 Runtime의 `company_structure`,
+`data_completeness`, `truncated`를 그대로 전달한다. 전체 귀속 금액과 비중 계산 가능 여부가
+확인되는 경우에만 미표시 업체 잔여 금액을 집계 총액에서 제외해 기타로 표시한다.
+그 외에는 확인된 업체 금액만 비교하고 전체 비중을 표시하지 않는다.
+`include_profiles=false`는 기관 후보 목록만 빠르게 반환한다. 첫 화면은 이 목록을 사용하고
+현재 기관만 기존 `/organizations/{code}/procurement-profile`과 `supplier-entries`로 조회한다.
+기관 분석은 자동 재생 없는 캐러셀로 한 기관씩 탐색하고 이전·다음 버튼과 스와이프를 제공한다.
+신규 관계의 건수·금액은 `target_year_contract_count`·`target_year_attributed_contract_amount`다.
+
+응답 `analysis_basis`에는 조회 연도·업무유형·탐색 낙찰 수·성공한 기관 수·조회 제한을
+제공한다. `partial`, `truncated`, `failed_organization_count`,
+`failed_new_relationship_count`로 누락 및 각 조회 실패를 보존한다. 주요 기관 조회가
+모두 실패하면 `relationship_unavailable` 오류로 처리한다. 부분 여부를 보존한 목록 스냅샷을 최대 15분 캐시한다. 서버 시작 시 준비하고
+이후 백그라운드에서 5분 주기로 갱신한다. 전체 실패는 캐시하지 않으며 갱신 실패 시
+유효한 이전 스냅샷을 유지한다. `snapshot_updated_at`은 목록 갱신 시각이다.
+
+`/api/v1/home/company-sectors`는 직전 완료 연도의 물품·용역·공사 계약을
+`search_public_procurement_contracts`의 `sort=amount_desc`, 유형별 최대 100건으로
+탐색한다. 현재 계약금액으로 정렬한 후보에서 공식 분야 최대 2개를 선택한다.
+물품 계약에 공식 분류가 없으면 후보 계약업체 최대 6곳의
+`analyze_company_procurement_profile.field_distribution`을 사용한다. 분야별로
+최대 3개 후보 업체의 프로필을 같은 연도·업무유형·분야 조건으로 다시 조회한다.
+
+업체 금액·건수·거래기관 수는 해당 조건의 Runtime `summary`를 그대로 사용한다.
+지분율은 후보 선정에만 사용하며 계약금액을 재계산하지 않는다. 분야별 총시장규모나
+전체 업체 순위 API는 제공되지 않으므로 탐색 표본을 전체 시장 순위로 표시하지 않는다.
+유형별·분야별 `status`와 `partial`로 실패·누락을 구분하고, 전체 유형 실패는
+`company_sectors_unavailable` 오류로 처리한다. 부분 여부를 보존한 목록 스냅샷을 최대 15분 캐시하고 백그라운드에서 주기적으로
+갱신한다. 전체 실패는 캐시하지 않는다.
+
+
+## 계약 실적 업체 검색
+
+`GET /api/v1/companies/contract-discovery?q=정보시스템&period_years=3`는
+`search_public_procurement_contracts`에 검색어와 현재 연도를 포함한 연도 범위를 전달한다.
+`sort=amount_desc`, 첫 페이지 최대 100건에서 업체 식별자가 확인된 계약업체를 추출한다.
+지역 필터나 전체 시장 순위는 제공하지 않는다. 업체별 계약 근거와 표본 내 계약 건수를
+반환하며 동일 계약번호와 동일 업체의 반복 출현은 후보 내에서 중복 제거한다.
+
+대표 계약금액은 원천의 계약 전체 금액이다. 공동수급 지분으로 업체 금액을 재계산하지 않는다.
+검색어별 업체 귀속 금액 합계는 제공하지 않으며 기간 전체 프로필과 범위를 구분한다.
+`partial`, `sampled_contract_count`, `matched_contract_count`, `unidentified_contract_count`와
+`analysis_basis`로 잘림·표본 제한·식별 누락·조회 조건을 보존한다. 페이지 전체 건수를
+확인하지 못한 경우도 부분 결과다. 검색어를 공식 분야 분류로 자동 변환하지 않는다.
+
+## 조회 지연과 분석 캐시
+
+기관·업체 프로필, 관계 분석, 참여 이력 등 읽기 전용 분석은 Capability·입력·응답 옵션이
+같은 요청을 서버에서 함께 실행하고 최대 5분 재사용한다. 부분 데이터 상태도 보존해 재사용하며, 잘린
+Runtime 응답은 상태를 보존해 최대 1분만 재사용한다. 예외와 참가자격 평가는 캐시하지
+않는다. 소비자가 응답을 변경해도 다른 요청의 캐시가 바뀌지 않도록 복사본을 반환한다.
+
+첫 화면 목록 스냅샷은 요청마다 모든 분석을 다시 계산하지 않는다. 시작 시 비동기로
+준비하며 갱신 중에도 유효한 이전 스냅샷을 반환한다. 전체 실패는 기존 스냅샷을 덮어쓰지
+않고 유효기간 이후에는 다시 조회한다. 목록 갱신 시각은 원천 관찰 시각이나 평가 기준일과
+구분한다. 캐시는 프로세스 메모리 기반이며 재시작 직후 아직 준비되지 않은 조회와 처음
+선택하는 상세 조건은 Teoria 응답을 기다릴 수 있다.
+
+프론트는 업체 자격·기업 정보를 업체 정보 탭에서, 기관 신규 업체 전체 목록을 신규 업체
+필터를 선택했을 때 조회한다. 기관 업체 탭에서는 공고 활동 요청을 시작하지 않는다.
+
+첫 화면의 후보 기관 프로필은 상세와 같은 30개 관계를 조회한 뒤 첫 화면에서는 최대
+30개 관계를 보존한다. 가상 데이터 샘플 화면은 제거했다. 후보 업체 프로필도 상세와 같은 20개 거래기관 범위를 조회한다.
+명시적 시작·종료 연도가 같으면 `period_years`의 기본값 차이는 캐시 키에서 제외하되
+실제 Runtime 입력은 그대로 전달한다. 따라서 첫 화면에서 상세로 이동할 때 같은 연도·
+분야의 분석 결과를 재사용할 수 있다.

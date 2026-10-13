@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.integrations.teoria import teoria_client
 from app.services import search_service
 from app.services.cache import TTLCache
+from app.services.procurement_cache import cached_runtime_read
 from app.services.teoria_adapter import (
     RequirementSetMismatch,
     first_present,
@@ -192,7 +193,7 @@ async def get_notice_organization_field_companies(
     cached = _organization_field_company_cache.get(cache_key)
     if cached is not None:
         return cached
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "analyze_bid_participation_context",
         {"bid_notice_id": canonical_id, "period_years": period_years},
         max_objects=300,
@@ -232,7 +233,7 @@ async def get_notice_participation_context(
                 "message": "공고 ID는 공고번호:차수 형식이어야 합니다.",
             },
         ) from exc
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "analyze_bid_participation_context",
         {"bid_notice_id": f"{number}:{order}", "period_years": period_years},
         max_objects=100,
@@ -310,7 +311,7 @@ async def get_notice_organization_company_relationship(
             },
         ) from exc
     canonical_id = f"{number}:{order}"
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "get_organization_company_relationship",
         {
             "organization_code": organization_code,
@@ -369,7 +370,7 @@ async def get_notice_activity(notice_id: str):
         ) from exc
     canonical_id = f"{number}:{order}"
     context, participation_data, contract_data = await asyncio.gather(
-        teoria_client.execute(
+        cached_runtime_read(
             "get_bid_notice_relationship_context",
             {"bid_notice_id": canonical_id, "relationship_history_years": 5},
             max_objects=500,
@@ -406,7 +407,7 @@ async def get_bid_relationship_context(
                 "message": "공고 ID는 공고번호:차수 형식이어야 합니다.",
             },
         ) from exc
-    data = await teoria_client.execute(
+    data = await cached_runtime_read(
         "get_bid_notice_relationship_context",
         {"bid_notice_id": notice_id, "relationship_history_years": relationship_history_years},
         max_objects=500,

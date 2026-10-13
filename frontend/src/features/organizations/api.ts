@@ -1,5 +1,5 @@
 import { keepPreviousForEntity } from "@/shared/api/query-placeholder";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 
 export type Organization = {
@@ -423,7 +423,7 @@ export type OrganizationProcurementProfile = {
   registry_version?: string;
   pagination?: { page?: number; page_size?: number; total_items?: number; total_pages?: number };
 };
-export function useOrganizationProcurementProfile(
+export function organizationProcurementQueryOptions(
   code?: string,
   periodYears = 5,
   filters: ProcurementFilters = {},
@@ -451,7 +451,7 @@ export function useOrganizationProcurementProfile(
   if (filters.workType) search.set("work_type", filters.workType);
   if (companies.query) search.set("company_query", companies.query);
   if (companies.sort) search.set("sort", companies.sort);
-  return useQuery({
+  return queryOptions({
     queryKey: ["organization-procurement-profile", code, periodYears, periodRange, filters, companies],
     queryFn: ({ signal }) =>
       api<OrganizationProcurementProfile>(
@@ -464,6 +464,12 @@ export function useOrganizationProcurementProfile(
       keepPreviousForEntity(previous, query?.queryKey, ["organization-procurement-profile", code]),
   });
 }
+export function useOrganizationProcurementProfile(
+  ...args: Parameters<typeof organizationProcurementQueryOptions>
+) {
+  return useQuery(organizationProcurementQueryOptions(...args));
+}
+
 export function useOrganizationSupplierEntries(
   code?: string,
   targetYear?: number,

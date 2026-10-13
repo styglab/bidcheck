@@ -101,7 +101,7 @@ export function useOrganizationDetailPage() {
   const organizationQuery = useOrganization(organizationId);
   const activity = useOrganizationProcurementActivity(
     organizationId,
-    true,
+    tab === "overview" || tab === "notices",
     periodRange,
     tab === "notices" ? listPage : 1,
     tab === "notices" ? listQuery || undefined : undefined,
@@ -126,7 +126,7 @@ export function useOrganizationDetailPage() {
     periodRange,
     {
       page: 1,
-      pageSize: tab === "overview" || tab === "companies" ? 30 : 20,
+      pageSize: 30,
       sort: "contract_amount_desc",
     },
   );
@@ -139,7 +139,7 @@ export function useOrganizationDetailPage() {
       fieldCode: selectedFieldCode,
       workType: selectedWorkType,
     },
-    tab === "companies",
+    tab === "companies" && overviewCompanyFilter === "new",
     1,
     100,
   );
@@ -226,8 +226,14 @@ export function useOrganizationDetailPage() {
   const middleCompanyShare = Math.max(0, loadedCompanyShare - topFiveCompanyShare);
   const remainingCompanyShare = Math.max(0, 1 - loadedCompanyShare);
   const newSupplierNumbers = useMemo(
-    () => new Set((supplierEntries.data?.items ?? []).map((company) => company.company_number)),
-    [supplierEntries.data?.items],
+    () =>
+      new Set([
+        ...(supplierEntries.data?.items ?? []).map((company) => company.company_number),
+        ...companyRelationships
+          .filter((company) => company.supplier_entry?.entry_status === "first_observed")
+          .map((company) => company.company_number),
+      ]),
+    [supplierEntries.data?.items, companyRelationships],
   );
   const majorSupplierNumbers = useMemo(
     () => new Set(companyRelationships.slice(0, 5).map((company) => company.company_number)),

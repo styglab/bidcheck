@@ -1,5 +1,5 @@
 import { keepPreviousForEntity } from "@/shared/api/query-placeholder";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api } from "../../shared/api/client";
 export type CompanySearchItem = {
   id: string;
@@ -33,6 +33,34 @@ export type CompanyDiscoveryItem = {
   representative_award?: import("../notices/api").ProcurementAward;
 };
 
+export type ContractCompanyCandidate = {
+  business_registration_number: string;
+  name: string;
+  contract_count: number;
+  contracts: import("../notices/api").ProcurementContract[];
+};
+
+export function useContractCompanyDiscovery(query: string, periodYears: number) {
+  return useQuery({
+    queryKey: ["contract-company-discovery", query, periodYears],
+    queryFn: ({ signal }) =>
+      api<{
+        items: ContractCompanyCandidate[];
+        sampled_contract_count: number;
+        matched_contract_count?: number;
+        partial: boolean;
+        unidentified_contract_count: number;
+        analysis_basis: { period_from_year: number; period_to_year: number; query: string };
+      }>(
+        `/companies/contract-discovery?${new URLSearchParams({ q: query, period_years: String(periodYears) })}`,
+        { signal },
+      ),
+    enabled: query.trim().length >= 2,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
 export function useCompanyDiscovery(query: string) {
   return useQuery({
     queryKey: ["company-discovery", query],
@@ -63,12 +91,12 @@ export type CompanyProfileResponse = {
   partial: boolean;
   qualification_error?: string;
 };
-export function useCompanyProfile(businessNumber?: string) {
+export function useCompanyProfile(businessNumber?: string, enabled = true) {
   return useQuery({
     queryKey: ["company-profile", businessNumber],
     queryFn: ({ signal }) =>
       api<CompanyProfileResponse>(`/companies/${encodeURIComponent(businessNumber!)}/profile`, { signal }),
-    enabled: Boolean(businessNumber),
+    enabled: Boolean(businessNumber) && enabled,
     staleTime: 30 * 60_000,
   });
 }
@@ -333,23 +361,21 @@ export type CompanyProcurementProfile = {
   pagination?: { page: number; page_size: number; total_items: number; total_pages: number };
   registry_version?: string;
 };
-export function useCompanyProcurementProfile(
-  businessNumber?: string,
-  filters: {
-    fromYear?: number;
-    toYear?: number;
-    largeCategory?: string;
-    middleCategory?: string;
-    fieldCode?: string;
-    workType?: string;
-    organizationQuery?: string;
-    targetYear?: number;
-    organizationEntryStatus?: "first_observed" | "reentering" | "incumbent";
-    page?: number;
-    pageSize?: number;
-  } = {},
-  enabled = true,
-) {
+type CompanyProcurementFilters = {
+  fromYear?: number;
+  toYear?: number;
+  largeCategory?: string;
+  middleCategory?: string;
+  fieldCode?: string;
+  workType?: string;
+  organizationQuery?: string;
+  targetYear?: number;
+  organizationEntryStatus?: "first_observed" | "reentering" | "incumbent";
+  page?: number;
+  pageSize?: number;
+};
+
+export function companyProcurementProfilePath(businessNumber: string, filters: CompanyProcurementFilters = {}) {
   const search = new URLSearchParams({
     period_years: String(filters.fromYear && filters.toYear ? filters.toYear - filters.fromYear + 1 : 5),
     page: String(filters.page ?? 1),
@@ -368,13 +394,18 @@ export function useCompanyProcurementProfile(
   if (filters.organizationEntryStatus) {
     search.set("organization_entry_status", filters.organizationEntryStatus);
   }
-  return useQuery({
+  return `/companies/${encodeURIComponent(businessNumber)}/procurement-profile?${search}`;
+}
+
+export function companyProcurementQueryOptions(
+  businessNumber?: string,
+  filters: CompanyProcurementFilters = {},
+  enabled = true,
+) {
+  return queryOptions({
     queryKey: ["company-procurement-profile", businessNumber, filters],
     queryFn: ({ signal }) =>
-      api<CompanyProcurementProfile>(
-        `/companies/${encodeURIComponent(businessNumber!)}/procurement-profile?${search}`,
-        { signal },
-      ),
+      api<CompanyProcurementProfile>(companyProcurementProfilePath(businessNumber!, filters), { signal }),
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 10 * 60_000,
     placeholderData: (previous, query) =>
@@ -382,7 +413,12 @@ export function useCompanyProcurementProfile(
   });
 }
 
+export function useCompanyProcurementProfile(...args: Parameters<typeof companyProcurementQueryOptions>) {
+  return useQuery(companyProcurementQueryOptions(...args));
+}
+
 export type CompanyCompetitorsResponse = {
+  truncated?: boolean;
   items: Array<{
     company_number: string;
     company_name: string;
@@ -425,5 +461,42 @@ export function useCompanyCompetitors(
     staleTime: 10 * 60_000,
     placeholderData: (previous, query) =>
       keepPreviousForEntity(previous, query?.queryKey, ["company-competitors", businessNumber]),
+  });
+}
+
+export type CompanySectorDiscovery = {
+  snapshot_updated_at?: string;
+  year: number;
+  partial: boolean;
+  sectors: Array<{
+    work_type: "goods" | "service" | "construction";
+    status: "available" | "unavailable";
+    partial: boolean;
+    fields: Array<{
+      field_code: string;
+      field_name: string;
+      representative_contract_amount?: number | null;
+      selection_basis?: "supplier_official_field";
+      status: "available" | "unavailable";
+      partial: boolean;
+      companies: Array<{
+        business_registration_number: string;
+        name: string;
+        contract_event_count?: number | null;
+        total_attributed_contract_amount?: number | null;
+        amount_completeness: "complete" | "partial" | "unknown";
+        organization_count?: number | null;
+        major_organizations: Array<{ organization_code?: string; organization_name?: string }>;
+      }>;
+    }>;
+  }>;
+};
+
+export function useCompanySectorDiscovery() {
+  return useQuery({
+    queryKey: ["company-sector-discovery"],
+    queryFn: ({ signal }) => api<CompanySectorDiscovery>("/home/company-sectors", { signal }),
+    staleTime: 10 * 60_000,
+    retry: false,
   });
 }

@@ -41,6 +41,9 @@ type Props = {
   topFiveShare?: number | null;
   aggregateUnlisted?: boolean;
   showMetrics?: boolean;
+  summaryOnly?: boolean;
+  showShares?: boolean;
+  getCounterpartBadge?: (relationship: ProcurementRelationship) => ReactNode;
   enableDistributionView?: boolean;
   selectedRelationship?: ProcurementRelationship;
   onSelectRelationship?: (relationship?: ProcurementRelationship) => void;
@@ -95,6 +98,9 @@ export function RelationshipTreemap({
   topFiveShare,
   aggregateUnlisted = false,
   showMetrics = true,
+  summaryOnly = false,
+  showShares = true,
+  getCounterpartBadge,
   enableDistributionView = false,
   selectedRelationship,
   onSelectRelationship,
@@ -232,6 +238,22 @@ export function RelationshipTreemap({
           : (entry.rank ?? 99) <= 5
             ? "secondary"
             : "standard";
+      if (summaryOnly) {
+        return (
+          <div
+            className={`relationship-treemap-tile ${density}`}
+            style={{ flexGrow: item.value, flexBasis: 0 }}
+          >
+            <span className="relationship-treemap-label">
+              <strong>{entry.label}</strong>
+              {showShares && share != null && share >= 0.08 && (
+                <span className="relationship-treemap-value">{(share * 100).toFixed(1)}%</span>
+              )}
+              {entry.relationship && getCounterpartBadge?.(entry.relationship)}
+            </span>
+          </div>
+        );
+      }
       return (
         <button
           type="button"
@@ -292,7 +314,7 @@ export function RelationshipTreemap({
         title={title}
         description={description}
         meta={
-          !enableDistributionView && contracted.length > 15 ? (
+          !summaryOnly && !enableDistributionView && contracted.length > 15 ? (
             <EntityDetailAction onClick={() => setShowAll((current) => !current)}>
               {showAll
                 ? "상위 15개만"
@@ -402,7 +424,7 @@ export function RelationshipTreemap({
       >
         {branch ? renderBranch(branch) : <p>현재 조건에서 확인된 계약 관계가 없습니다.</p>}
       </div>
-      {!enableDistributionView && selected && (
+      {!summaryOnly && !enableDistributionView && selected && (
         <div className="relationship-inline-summary" aria-live="polite">
           <div>
             <span>선택 관계</span>
@@ -431,7 +453,7 @@ export function RelationshipTreemap({
         </div>
       )}
 
-      {enableDistributionView && selected && (
+      {!summaryOnly && enableDistributionView && selected && (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-slate-950/35"
           role="presentation"

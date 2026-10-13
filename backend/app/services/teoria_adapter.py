@@ -603,3 +603,31 @@ def requirement_set_object(data: dict[str, Any], notice_id: str) -> dict[str, An
     if len(matches) != 1:
         raise RequirementSetMismatch()
     return matches[0]
+
+
+def company_sector_profile(data: dict, number: str, name: str) -> dict:
+    outcome = runtime_outcome(data)
+    summary = outcome.get("summary")
+    if not isinstance(summary, dict):
+        raise TypeError("Invalid company sector profile")
+    company = outcome.get("company") or {}
+    if company.get("business_registration_number", number) != number:
+        raise ValueError("Invalid company sector profile")
+    return {
+        "field_distribution": outcome.get("field_distribution") or [],
+        "business_registration_number": number,
+        "name": company.get("name") or name,
+        "contract_event_count": summary.get("contract_event_count"),
+        "total_attributed_contract_amount": summary.get("total_attributed_contract_amount"),
+        "amount_completeness": summary.get("amount_completeness", "unknown"),
+        "organization_count": summary.get("organization_count"),
+        "major_organizations": [
+            {
+                "organization_code": item.get("organization_code"),
+                "organization_name": item.get("organization_name"),
+            }
+            for item in outcome.get("organization_relationships", [])[:2]
+        ],
+        "partial": bool(outcome.get("truncated"))
+        or (outcome.get("data_completeness") or {}).get("status") not in {None, "complete"},
+    }

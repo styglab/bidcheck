@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.bids import router as bids_router
 from app.api.v1.companies import router as companies_router
+from app.api.v1.explorer import router as explorer_router
 from app.api.v1.home import router as home_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.search import router as search_router
@@ -14,3 +15,4 @@ api_router.include_router(companies_router, prefix="/companies", tags=["companie
 api_router.include_router(organizations_router, prefix="/organizations", tags=["organizations"])
 api_router.include_router(home_router, prefix="/home", tags=["home"])
 api_router.include_router(search_router, prefix="/search", tags=["search"])
+api_router.include_router(explorer_router, prefix="/explorer", tags=["explorer"])

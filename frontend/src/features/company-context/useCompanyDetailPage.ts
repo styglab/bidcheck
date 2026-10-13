@@ -82,12 +82,12 @@ export function useCompanyDetailPage() {
     else next.set(key, String(page));
     setParams(next);
   };
-  const query = useCompanyProfile(businessNumber);
   const requestedTab = params.get("tab");
   const tab =
     requestedTab === "participations" || requestedTab === "organizations" || requestedTab === "companyInfo"
       ? requestedTab
       : "relationships";
+  const query = useCompanyProfile(businessNumber, tab === "companyInfo");
   const setTab = (nextTab: string) => {
     const next = new URLSearchParams(params);
     if (nextTab === "relationships") next.delete("tab");
