@@ -58,8 +58,9 @@ export function useNetworkExplorer() {
       ? { type: rootType, id: rootId, name: params.get("center_name") ?? params.get("seed_name") ?? rootId }
       : undefined;
   const hasFieldSelection = Boolean(filters.fieldCode || filters.largeCategory || filters.middleCategory);
+  const showCompetitorOrganizations = params.get("competitorOrganizations") === "show";
   const requestedLimit = Number(params.get("nodeLimit"));
-  const nodeLimit = [5, 10, 20].includes(requestedLimit) ? requestedLimit : 10;
+  const nodeLimit = [5, 10, 20].includes(requestedLimit) ? requestedLimit : 20;
   const useBatch = Boolean(root && root.type !== "company" && filters.fieldCode);
   const networkQuery = useQuery(
     networkQueryOptions(root, fromYear, toYear, filters.fieldCode, filters.workType, nodeLimit),
@@ -109,17 +110,24 @@ export function useNetworkExplorer() {
       ...filters,
     },
     hasFieldSelection,
+    nodeLimit,
   );
   const competitorEntities: ExplorerEntity[] =
     root?.type === "company" && !competitors.isPlaceholderData && !competitors.isError
       ? (competitors.data?.items ?? [])
           .filter((item) => item.co_participation_count > 0 && item.company_number !== root.id)
-          .slice(0, 5)
+          .slice(0, nodeLimit)
           .map((item) => ({ type: "company", id: item.company_number, name: item.company_name }))
       : [];
   const competitorProfiles = useQueries({
     queries: competitorEntities.map((entity) =>
-      allCompanyOrganizationsQueryOptions(entity.id, fromYear, toYear, filters),
+      allCompanyOrganizationsQueryOptions(
+        entity.id,
+        fromYear,
+        toYear,
+        filters,
+        showCompetitorOrganizations,
+      ),
     ),
   });
   const companyProfiles = new Map<string, CompanyProcurementProfile>();
@@ -176,7 +184,8 @@ export function useNetworkExplorer() {
   // Failed branches settle too, so a partial result can still be explored and retried.
   const companyRelationsLoading =
     root?.type === "company" &&
-    (competitors.isPending || competitorProfiles.some((result) => result.isPending));
+    (competitors.isPending ||
+      (showCompetitorOrganizations && competitorProfiles.some((result) => result.isPending)));
   const graphLoading = useBatch
     ? networkQuery.isPending || companyRelationsLoading
     : Boolean(

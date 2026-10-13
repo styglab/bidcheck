@@ -4,62 +4,16 @@ import { Plus, Minus, Maximize } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatExactMoney } from "@/shared/format/money";
 import { entityKey, linkKey, linkLabel, type ExplorerEntity, type ExplorerLink } from "./useNetworkExplorer";
-// Place direct relationships in the inner ring and their institutions in the outer ring.
-function graphRanks(
-  root: ExplorerEntity | undefined,
-  entities: ExplorerEntity[],
-  links: ExplorerLink[],
-) {
-  const ranks = new Map<string, number>();
-  if (!entities.length) return ranks;
-  const center = entityKey(root ?? entities[0]);
-  const adjacency = new Map<string, Set<string>>();
-  for (const link of links) {
-    const source = entityKey(link.source),
-      target = entityKey(link.target);
-    if (!adjacency.has(source)) adjacency.set(source, new Set());
-    if (!adjacency.has(target)) adjacency.set(target, new Set());
-    adjacency.get(source)!.add(target);
-    adjacency.get(target)!.add(source);
-  }
-  ranks.set(center, 10_000);
-  let frontier = [center];
-  for (let depth = 1; depth <= 2; depth++) {
-    const next: string[] = [];
-    for (const key of frontier) {
-      for (const neighbor of adjacency.get(key) ?? []) {
-        if (ranks.has(neighbor)) continue;
-        ranks.set(neighbor, depth);
-        next.push(neighbor);
-      }
-    }
-    frontier = next;
-  }
-  // Many institutions on a single circumference become sub-pixel dots after fit.
-  // Spread each hop across several balanced rings without dropping any nodes.
-  for (const [depth, perRing, score] of [[1, 32, 9_000], [2, 70, 8_000]] as const) {
-    entities.filter((entity) => ranks.get(entityKey(entity)) === depth)
-      .forEach((entity, index) => ranks.set(entityKey(entity), score - Math.floor(index / perRing)));
-  }
-  return ranks;
-}
+import { companyNodeScopes, graphRanks } from "./graph-layout";
+import { companyScopeLabels, explorerNodePresentation } from "./graph-presentation";
 
-function fitAroundCenter(cy: Core) {
-  const visible = cy.nodes().filter((node) => !node.hasClass("hidden"));
-  const center = visible.filter((node) => node.data("center") === "true")[0];
-  if (!center) {
-    cy.fit(cy.elements(":visible"), 70);
-    return;
-  }
-  const bounds = visible.boundingBox({ includeLabels: true, includeOverlays: false });
-  const position = center.position();
-  const horizontalRadius = Math.max(position.x - bounds.x1, bounds.x2 - position.x, 1);
-  const verticalRadius = Math.max(position.y - bounds.y1, bounds.y2 - position.y, 1);
-  cy.zoom(Math.max(cy.minZoom(), Math.min(cy.maxZoom(),
-    (cy.width() - 140) / (2 * horizontalRadius),
-    (cy.height() - 140) / (2 * verticalRadius),
-  )));
-  cy.center(center);
+const companyNode = explorerNodePresentation.company;
+const organizationNode = explorerNodePresentation.organization;
+const fieldNode = explorerNodePresentation.field;
+
+function fitVisibleGraph(cy: Core) {
+  const visible = cy.elements().filter((element) => !element.hasClass("hidden"));
+  if (visible.length) cy.fit(visible, 56);
 }
 
 export function ExplorerGraph({
@@ -89,6 +43,7 @@ export function ExplorerGraph({
   const instance = useRef<Core | null>(null);
   const [hoveredNode, setHoveredNode] = useState<{
     name: string;
+    scope?: string;
     value?: number;
     partial: boolean;
     x: number;
@@ -133,8 +88,8 @@ export function ExplorerGraph({
             shape: "ellipse",
             width: "data(diameter)",
             height: "data(diameter)",
-            "background-color": "#2dd4bf",
-            "border-color": "#99f6e4",
+            "background-color": companyNode.backgroundColor,
+            "border-color": companyNode.borderColor,
             "border-width": 1.5,
             label: "data(label)",
             color: "#e2e8f0",
@@ -149,7 +104,7 @@ export function ExplorerGraph({
             "text-outline-color": "#0b1220",
             "text-outline-width": 2,
             "overlay-opacity": 0,
-            "underlay-color": "#14b8a6",
+            "underlay-color": companyNode.underlayColor,
             "underlay-opacity": 0.13,
             "underlay-padding": 8,
           },
@@ -159,14 +114,18 @@ export function ExplorerGraph({
           style: {
             width: "data(diameter)",
             height: "data(diameter)",
-            "background-color": "#a78bfa",
-            "border-color": "#ddd6fe",
-            "underlay-color": "#8b5cf6",
+            "background-color": organizationNode.backgroundColor,
+            "border-color": organizationNode.borderColor,
+            "underlay-color": organizationNode.underlayColor,
           },
         },
         {
           selector: 'node[kind = "field"]',
-          style: { "background-color": "#60a5fa", "border-color": "#bfdbfe", "underlay-color": "#3b82f6" },
+          style: {
+            "background-color": fieldNode.backgroundColor,
+            "border-color": fieldNode.borderColor,
+            "underlay-color": fieldNode.underlayColor,
+          },
         },
         {
           selector: 'node[center = "true"]',
@@ -229,6 +188,15 @@ export function ExplorerGraph({
         },
         { selector: ".hidden", style: { display: "none" } },
         { selector: "node[metricKnown = 'false'][center = 'false']", style: { "background-opacity": 0.3 } },
+        {
+          selector: 'node[scope = "co_bidder"]',
+          style: {
+            "background-color": companyNode.backgroundColor,
+            "background-opacity": 1,
+            "border-color": companyNode.borderColor,
+            "underlay-color": companyNode.underlayColor,
+          },
+        },
         { selector: ".muted", style: { opacity: 0.25 } },
         { selector: ".focus", style: { "line-color": "#7dd3fc", width: "data(selectedWidth)", opacity: 1 } },
       ],
@@ -253,6 +221,7 @@ export function ExplorerGraph({
       const position = node.renderedPosition();
       setHoveredNode({
         name: node.data("name"),
+        scope: node.data("scopeLabel"),
         value: node.data("metricValue"),
         partial: node.data("metricPartial") === "true",
         x: position.x,
@@ -262,7 +231,7 @@ export function ExplorerGraph({
     cy.on("mouseout", "node", () => setHoveredNode(null));
     const observer = new ResizeObserver(() => {
       cy.resize();
-      fitAroundCenter(cy);
+      fitVisibleGraph(cy);
     });
     observer.observe(container.current);
     return () => {
@@ -299,21 +268,29 @@ export function ExplorerGraph({
   const diameter = (value: number | undefined) =>
     value == null ? 18 : Math.max(18, 104 * Math.sqrt(value / nodeMax));
   const ranks = graphRanks(root, entities, links);
+  const scopes = companyNodeScopes(root, entities, links);
   const elements: ElementDefinition[] = [
-    ...entities.map((entity) => ({
-      data: {
-        id: entityKey(entity),
-        rank: ranks.get(entityKey(entity)) ?? 0,
-        name: entity.name,
-        label: `${entity.type === "organization" ? "기관" : entity.type === "company" ? "업체" : "분야"}\n${entity.name.length > 18 ? `${entity.name.slice(0, 17)}…` : entity.name}`,
-        diameter: diameter(totals.get(entityKey(entity))),
-        metricValue: totals.get(entityKey(entity)),
-        metricPartial: partialAmounts.has(entityKey(entity)) ? "true" : "false",
-        metricKnown: totals.has(entityKey(entity)) ? "true" : "false",
-        kind: entity.type,
-        center: root && entityKey(entity) === entityKey(root) ? "true" : "false",
-      },
-    })),
+    ...entities.map((entity) => {
+      const scope = scopes.get(entityKey(entity));
+      const typeLabel = (scope ? companyScopeLabels[scope] : undefined) ??
+        explorerNodePresentation[entity.type].label;
+      return {
+        data: {
+          id: entityKey(entity),
+          rank: ranks.get(entityKey(entity)) ?? 0,
+          name: entity.name,
+          label: `${typeLabel}\n${entity.name.length > 18 ? `${entity.name.slice(0, 17)}…` : entity.name}`,
+          scope,
+          scopeLabel: scope ? companyScopeLabels[scope] : undefined,
+          diameter: diameter(totals.get(entityKey(entity))),
+          metricValue: totals.get(entityKey(entity)),
+          metricPartial: partialAmounts.has(entityKey(entity)) ? "true" : "false",
+          metricKnown: totals.has(entityKey(entity)) ? "true" : "false",
+          kind: entity.type,
+          center: root && entityKey(entity) === entityKey(root) ? "true" : "false",
+        },
+      };
+    }),
     ...links.map((link, index) => ({
       data: {
         id: linkKey(link),
@@ -356,7 +333,7 @@ export function ExplorerGraph({
     });
     layout.run();
     cy.nodes().filter((node) => node.data("center") === "true").lock();
-    fitAroundCenter(cy);
+    fitVisibleGraph(cy);
     const stage = container.current;
     let hovered = false;
     const enter = () => {
@@ -440,7 +417,7 @@ export function ExplorerGraph({
           .addClass("hidden");
       }
     });
-    fitAroundCenter(cy);
+    fitVisibleGraph(cy);
   }, [entityVisibility, graphIdentity]);
   return (
     <div
@@ -466,6 +443,7 @@ export function ExplorerGraph({
           style={{ left: hoveredNode.x, top: hoveredNode.y, transform: "translate(12px, -110%)" }}
           role="status"
         >
+          {hoveredNode.scope && <div className="text-[10px] font-semibold text-sky-300">{hoveredNode.scope}</div>}
           <div className="font-semibold">{hoveredNode.name}</div>
           <div className="mt-1 text-slate-300">
             표시된 관계의 {sizeMetric === "amount" ? "계약금액" : "계약 건수"}: {hoveredNode.value == null
@@ -515,7 +493,7 @@ export function ExplorerGraph({
           size="icon"
           className="size-8 text-slate-300 hover:bg-slate-700 hover:text-white"
           aria-label="전체 관계 보기"
-          onClick={() => instance.current && fitAroundCenter(instance.current)}
+          onClick={() => instance.current && fitVisibleGraph(instance.current)}
         >
           <Maximize />
         </Button>

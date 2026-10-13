@@ -439,19 +439,20 @@ export function useCompanyCompetitors(
     workType?: string;
   },
   enabled = true,
+  pageSize = 5,
 ) {
   const search = new URLSearchParams({
     period_from_year: String(filters.fromYear),
     period_to_year: String(filters.toYear),
     page: "1",
-    page_size: "5",
+    page_size: String(pageSize),
   });
   if (filters.largeCategory) search.set("large_category", filters.largeCategory);
   if (filters.middleCategory) search.set("middle_category", filters.middleCategory);
   if (filters.fieldCode) search.set("field_code", filters.fieldCode);
   if (filters.workType) search.set("work_type", filters.workType);
   return useQuery({
-    queryKey: ["company-competitors", businessNumber, filters],
+    queryKey: ["company-competitors", businessNumber, filters, pageSize],
     queryFn: ({ signal }) =>
       api<CompanyCompetitorsResponse>(
         `/companies/${encodeURIComponent(businessNumber!)}/competitors?${search}`,
