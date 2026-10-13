@@ -2,6 +2,7 @@ import { queryOptions, useInfiniteQuery, useQuery, type QueryFunction } from "@t
 import {
   companyProcurementQueryOptions,
   companyProcurementProfilePath,
+  type CompanyActivityItem,
   type CompanyProcurementProfile,
 } from "@/features/company-context/api";
 import {
@@ -12,6 +13,102 @@ import { api } from "@/shared/api/client";
 import type { ExplorerEntity } from "./useNetworkExplorer";
 
 export type NetworkProfile = CompanyProcurementProfile | OrganizationProcurementProfile;
+
+type ParticipationPage = {
+  items: CompanyActivityItem[];
+  pagination?: { total_pages?: number };
+  data_completeness?: { status?: string };
+};
+
+export type SharedParticipationNotice = {
+  bid_notice_id: string;
+  notice_name?: string;
+  notice_number?: string;
+  participation_date?: string;
+};
+
+export function sharedParticipationsQueryOptions(
+  firstCompanyNumber: string | undefined,
+  secondCompanyNumber: string | undefined,
+  fromYear: number,
+  toYear: number,
+  filters: { workType?: string; fieldCode?: string; largeCategory?: string; middleCategory?: string },
+) {
+  const baseSearch = new URLSearchParams({
+    period_from_year: String(fromYear),
+    period_to_year: String(toYear),
+    page_size: "50",
+  });
+  for (const [value, key] of [
+    [filters.workType, "work_type"],
+    [filters.fieldCode, "field_code"],
+    [filters.largeCategory, "large_category"],
+    [filters.middleCategory, "middle_category"],
+  ] as const) {
+    if (value) baseSearch.set(key, value);
+  }
+  return queryOptions({
+    queryKey: [
+      "explorer-shared-participations",
+      firstCompanyNumber,
+      secondCompanyNumber,
+      baseSearch.toString(),
+    ],
+    queryFn: async ({ signal }) => {
+      const fetchCompany = async (companyNumber: string) => {
+        const fetchPage = (page: number) => {
+          const search = new URLSearchParams(baseSearch);
+          search.set("page", String(page));
+          return api<ParticipationPage>(
+            `/companies/${encodeURIComponent(companyNumber)}/activity?${search}`,
+            { signal },
+          );
+        };
+        const first = await fetchPage(1);
+        const totalPages = first.pagination?.total_pages ?? 1;
+        const pageLimit = Math.min(totalPages, 5);
+        const pages = [first];
+        if (pageLimit > 1) {
+          pages.push(
+            ...(await Promise.all(Array.from({ length: pageLimit - 1 }, (_, index) => fetchPage(index + 2)))),
+          );
+        }
+        return {
+          items: pages.flatMap((page) => page.items ?? []),
+          partial:
+            totalPages > pageLimit || pages.some((page) => page.data_completeness?.status === "partial"),
+        };
+      };
+      const [first, second] = await Promise.all([
+        fetchCompany(firstCompanyNumber!),
+        fetchCompany(secondCompanyNumber!),
+      ]);
+      const secondNoticeIds = new Set(
+        second.items.map((item) => item.bid_notice_id).filter((id): id is string => Boolean(id)),
+      );
+      const notices = new Map<string, SharedParticipationNotice>();
+      for (const item of first.items) {
+        if (
+          !item.bid_notice_id ||
+          !secondNoticeIds.has(item.bid_notice_id) ||
+          notices.has(item.bid_notice_id)
+        )
+          continue;
+        notices.set(item.bid_notice_id, {
+          bid_notice_id: item.bid_notice_id,
+          notice_name: item.notice_name,
+          notice_number: item.notice_number,
+          participation_date: item.participation_date ?? item.bid_at,
+        });
+      }
+      return { items: [...notices.values()].slice(0, 5), partial: first.partial || second.partial };
+    },
+    enabled: Boolean(firstCompanyNumber && secondCompanyNumber),
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+}
+
 export function allCompanyOrganizationsQueryOptions(
   businessNumber: string | undefined,
   fromYear: number,

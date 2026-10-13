@@ -8,6 +8,7 @@ import { useOrganizationCompanyRelationship } from "@/features/organizations/api
 import { formatExactMoney } from "@/shared/format/money";
 import { linkLabel, type ExplorerEntity, type ExplorerLink } from "./useNetworkExplorer";
 import { api } from "@/shared/api/client";
+import { sharedParticipationsQueryOptions } from "./api";
 
 export function ExplorerRelationshipPanel({
   link,
@@ -28,6 +29,21 @@ export function ExplorerRelationshipPanel({
   const institution = [link.source, link.target].find((e) => e.type === "organization");
   const company = [link.source, link.target].find((e) => e.type === "company");
   const kind = link.kind ?? "contract";
+  const companies = [link.source, link.target].filter((entity) => entity.type === "company");
+  const sharedParticipations = useQuery(
+    sharedParticipationsQueryOptions(
+      kind === "competition" ? companies[0]?.id : undefined,
+      kind === "competition" ? companies[1]?.id : undefined,
+      fromYear,
+      toYear,
+      {
+        workType: params.get("workType") ?? undefined,
+        fieldCode: params.get("field") ?? undefined,
+        largeCategory: params.get("large") ?? undefined,
+        middleCategory: params.get("middle") ?? undefined,
+      },
+    ),
+  );
   const legacyQuery = useOrganizationCompanyRelationship(
     institution?.id,
     company?.id,
@@ -138,6 +154,47 @@ export function ExplorerRelationshipPanel({
       )}
       {kind === "contract" && detail.amount_completeness !== "complete" && (
         <p className="text-xs text-amber-700">일부 계약금액이 확인되지 않았습니다.</p>
+      )}
+      {kind === "competition" && (
+        <section>
+          <h3 className="text-sm font-semibold">함께 참여한 공고</h3>
+          {sharedParticipations.isLoading ? (
+            <Skeleton className="mt-3 h-24" />
+          ) : sharedParticipations.isError ? (
+            <p role="alert" className="mt-3 text-xs">
+              함께 참여한 공고를 불러오지 못했습니다.{" "}
+              <Button variant="link" size="sm" onClick={() => void sharedParticipations.refetch()}>
+                다시 시도
+              </Button>
+            </p>
+          ) : sharedParticipations.data?.items.length ? (
+            <ul className="mt-3 space-y-3">
+              {sharedParticipations.data.items.map((notice) => (
+                <li key={notice.bid_notice_id} className="rounded-xl border p-3">
+                  <Link
+                    className="text-xs font-medium text-primary hover:underline"
+                    to={`/notices/${encodeURIComponent(notice.bid_notice_id)}`}
+                  >
+                    {notice.notice_name ?? notice.notice_number ?? notice.bid_notice_id}
+                  </Link>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    공고번호 {notice.notice_number ?? notice.bid_notice_id} · 참여일{" "}
+                    {notice.participation_date?.slice(0, 10) ?? "확인 필요"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              조회한 참여 기록에서 공통 공고를 식별하지 못했습니다.
+            </p>
+          )}
+          {sharedParticipations.data?.partial && (
+            <p className="mt-3 text-xs text-amber-700">
+              참여 기록이 많아 최근 기록에서 확인된 공고만 표시합니다.
+            </p>
+          )}
+        </section>
       )}
       {detail.representative_notices?.length ? (
         <section>
