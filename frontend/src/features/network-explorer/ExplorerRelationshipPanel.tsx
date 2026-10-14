@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ArrowRight, Building2, Landmark, Tags } from "lucide-react";
@@ -59,7 +59,16 @@ export function ExplorerRelationshipPanel({
     { from: fromYear, to: toYear },
   );
   const networkQuery = useQuery({
-    queryKey: ["explorer-network-relationship", institution?.id, company?.id, snapshotId, page, fromYear, toYear, params.get("field")],
+    queryKey: [
+      "explorer-network-relationship",
+      institution?.id,
+      company?.id,
+      snapshotId,
+      page,
+      fromYear,
+      toYear,
+      params.get("field"),
+    ],
     queryFn: ({ signal }) => {
       const search = new URLSearchParams({
         view_mode: "network_edge",
@@ -69,15 +78,27 @@ export function ExplorerRelationshipPanel({
         page: String(page),
         page_size: "20",
       });
-      for (const [key, target] of [["field", "field_code"], ["workType", "work_type"]] as const) {
+      for (const [key, target] of [
+        ["field", "field_code"],
+        ["workType", "work_type"],
+      ] as const) {
         if (params.get(key)) search.set(target, params.get(key)!);
       }
       return api<{
-        events: Array<{ contract_event_id?: string; contract_name?: string; bid_notice_id?: string; attributed_contract_amount?: number; first_contract_date?: string }>;
+        events: Array<{
+          contract_event_id?: string;
+          contract_name?: string;
+          bid_notice_id?: string;
+          attributed_contract_amount?: number;
+          first_contract_date?: string;
+        }>;
         pagination: { total_pages: number };
         summary: { contract_count: number; total_attributed_contract_amount: number | null };
         snapshot_id: string;
-      }>(`/organizations/${encodeURIComponent(institution!.id)}/companies/${encodeURIComponent(company!.id)}/relationship?${search}`, { signal });
+      }>(
+        `/organizations/${encodeURIComponent(institution!.id)}/companies/${encodeURIComponent(company!.id)}/relationship?${search}`,
+        { signal },
+      );
     },
     enabled: kind === "contract" && Boolean(snapshotId && institution && company),
     staleTime: 5 * 60_000,
@@ -94,31 +115,38 @@ export function ExplorerRelationshipPanel({
         <p className="mt-2 text-xs text-muted-foreground">
           {fromYear}–{toYear}년 · 선택한 조건의 거래 내역
         </p>
+        {kind === "contract" && (
+          <p className="mt-3 text-sm font-semibold">
+            계약 {detail.contract_event_count}건 · {formatExactMoney(detail.total_attributed_contract_amount)}
+          </p>
+        )}
       </header>
-      <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+      <div className="flex items-center gap-1 rounded-xl border bg-muted/30 p-2">
         {[link.source, link.target].map((entity, index) => {
           const Icon =
             entity.type === "organization" ? Landmark : entity.type === "company" ? Building2 : Tags;
           return (
-            <div key={entity.id}>
+            <Fragment key={`${entity.type}:${entity.id}`}>
               {index > 0 && (
-                <ArrowRight className="mx-auto my-2 size-4 text-muted-foreground" aria-hidden="true" />
+                <ArrowRight className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
               )}
               <button
-                className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-muted"
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg p-1.5 text-left hover:bg-muted"
                 onClick={() => onSelect(entity)}
               >
                 <Icon
                   className={`size-4 shrink-0 ${entity.type === "organization" ? "text-blue-600" : "text-teal-600"}`}
                 />
-                <div>
+                <div className="min-w-0">
                   <span className="text-[10px] text-muted-foreground">
                     {entity.type === "organization" ? "기관" : entity.type === "company" ? "업체" : "분야"}
                   </span>
-                  <p className="text-sm font-semibold">{entity.name}</p>
+                  <p className="truncate text-xs font-semibold" title={entity.name}>
+                    {entity.name}
+                  </p>
                 </div>
               </button>
-            </div>
+            </Fragment>
           );
         })}
       </div>
@@ -134,11 +162,23 @@ export function ExplorerRelationshipPanel({
           />
           <Metric
             label="낙찰 건수"
-            value={detail.award_event_count == null ? (snapshotId ? "현재 미제공" : "확인 필요") : `${detail.award_event_count}건`}
+            value={
+              detail.award_event_count == null
+                ? snapshotId
+                  ? "현재 미제공"
+                  : "확인 필요"
+                : `${detail.award_event_count}건`
+            }
           />
           <Metric
             label="참여 건수 (수집 기록)"
-            value={detail.participation_count == null ? (snapshotId ? "현재 미제공" : "확인 필요") : `${detail.participation_count}건`}
+            value={
+              detail.participation_count == null
+                ? snapshotId
+                  ? "현재 미제공"
+                  : "확인 필요"
+                : `${detail.participation_count}건`
+            }
           />
           <Metric label="최근 계약일" value={detail.latest_contract_date?.slice(0, 10) ?? "확인 필요"} />
         </dl>
@@ -238,10 +278,18 @@ export function ExplorerRelationshipPanel({
                     key={`${"contract_event_id" in event ? event.contract_event_id : "award_event_id" in event ? event.award_event_id : ""}-${event.bid_notice_id}-${index}`}
                     className="rounded-xl border p-3"
                   >
-                    <p className="text-xs font-medium">{("contract_name" in event ? event.contract_name : "notice_name" in event ? event.notice_name : undefined) ?? "사업명 확인 필요"}</p>
+                    <p className="text-xs font-medium">
+                      {("contract_name" in event
+                        ? event.contract_name
+                        : "notice_name" in event
+                          ? event.notice_name
+                          : undefined) ?? "사업명 확인 필요"}
+                    </p>
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       {formatExactMoney(event.attributed_contract_amount)} ·{" "}
-                      {event.first_contract_date ?? ("contract_date" in event ? event.contract_date : undefined) ?? "계약일 확인 필요"}
+                      {event.first_contract_date ??
+                        ("contract_date" in event ? event.contract_date : undefined) ??
+                        "계약일 확인 필요"}
                     </p>
                     {event.bid_notice_id && (
                       <Link
@@ -276,9 +324,11 @@ export function ExplorerRelationshipPanel({
                   다음
                 </Button>
               </div>
-              {evidence && "data_completeness" in evidence && evidence.data_completeness?.status === "partial" && (
-                <p className="mt-3 text-xs text-amber-700">일부 계약 내역만 확인됐습니다.</p>
-              )}
+              {evidence &&
+                "data_completeness" in evidence &&
+                evidence.data_completeness?.status === "partial" && (
+                  <p className="mt-3 text-xs text-amber-700">일부 계약 내역만 확인됐습니다.</p>
+                )}
             </>
           )}
         </section>

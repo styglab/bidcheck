@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
   allCompanyOrganizationsQueryOptions,
+  companyFirstPageQueryOptions,
   networkProfileQueryOptions,
   fieldContextQueryOptions,
   networkQueryOptions,
@@ -9,6 +10,7 @@ import { useSearchParams } from "react-router-dom";
 import { useCompanyCompetitors, type CompanyProcurementProfile } from "@/features/company-context/api";
 import { useOrganizationProcurementProfile } from "@/features/organizations/api";
 import type { ProcurementRelationship } from "@/features/organizations/api";
+import { formatCompactMoney } from "@/shared/format/money";
 
 export type ExplorerEntity = { type: "organization" | "company" | "field"; id: string; name: string };
 export const entityKey = (entity: ExplorerEntity) => `${entity.type}:${entity.id}`;
@@ -25,15 +27,21 @@ export type ExplorerLink = {
 
 export const linkKey = (link: ExplorerLink) =>
   [entityKey(link.source), entityKey(link.target)].sort().join("|");
-export const linkLabel = (link: ExplorerLink) =>
-  link.label?.replace(/^조회 계약/, "확인된 계약").replace(/공동 참여/g, "같은 입찰 참여") ??
-  {
+export const linkLabel = (link: ExplorerLink) => {
+  if (link.label)
+    return link.label.replace(/^조회 계약/, "확인된 계약").replace(/공동 참여/g, "같은 입찰 참여");
+  if ((link.kind ?? "contract") === "contract") {
+    const amount = link.relationship.total_attributed_contract_amount;
+    return `계약 ${link.relationship.contract_event_count}건${amount == null ? "" : ` · ${formatCompactMoney(amount)}`}`;
+  }
+  return {
     contract: "거래 관계",
     award: `낙찰 ${link.count ?? 0}건`,
     participation: `참여 ${link.count ?? 0}건`,
     competition: `같은 입찰 참여 ${link.count ?? 0}건`,
     field: "분야 계약",
   }[link.kind ?? "contract"];
+};
 
 export function useNetworkExplorer() {
   const [params, setParams] = useSearchParams();
@@ -60,7 +68,7 @@ export function useNetworkExplorer() {
   const hasFieldSelection = Boolean(filters.fieldCode || filters.largeCategory || filters.middleCategory);
   const showCompetitorOrganizations = params.get("competitorOrganizations") === "show";
   const requestedLimit = Number(params.get("nodeLimit"));
-  const nodeLimit = [5, 10, 20].includes(requestedLimit) ? requestedLimit : 20;
+  const nodeLimit = [5, 10, 20, 50].includes(requestedLimit) ? requestedLimit : 20;
   const useBatch = Boolean(root && root.type !== "company" && filters.fieldCode);
   const networkQuery = useQuery(
     networkQueryOptions(root, fromYear, toYear, filters.fieldCode, filters.workType, nodeLimit),
@@ -75,6 +83,9 @@ export function useNetworkExplorer() {
       root?.type === "company" && hasFieldSelection,
     ),
   );
+  const rootCompanyFirstPage = useQuery(
+    companyFirstPageQueryOptions(root?.type === "company" ? root.id : undefined, fromYear, toYear, filters),
+  );
   const rootOrganization = useOrganizationProcurementProfile(
     root?.type === "organization" ? root.id : undefined,
     toYear - fromYear + 1,
@@ -83,7 +94,9 @@ export function useNetworkExplorer() {
     period,
     { pageSize: nodeLimit, sort: "contract_amount_desc" },
   );
-  const companyData = rootCompany.isPlaceholderData || rootCompany.isError ? undefined : rootCompany.data;
+  const companyData =
+    (!rootCompany.isPlaceholderData && !rootCompany.isError ? rootCompany.data : undefined) ??
+    rootCompanyFirstPage.data;
   const organizationData =
     rootOrganization.isPlaceholderData || rootOrganization.isError ? undefined : rootOrganization.data;
   // Retain the already-fetched unfiltered category catalog when the analysis is narrowed.
@@ -119,24 +132,37 @@ export function useNetworkExplorer() {
           .slice(0, nodeLimit)
           .map((item) => ({ type: "company", id: item.company_number, name: item.company_name }))
       : [];
+  const profiledCompetitors = competitorEntities.slice(0, 10);
   const competitorProfiles = useQueries({
-    queries: competitorEntities.map((entity) =>
-      allCompanyOrganizationsQueryOptions(
-        entity.id,
-        fromYear,
-        toYear,
-        filters,
-        showCompetitorOrganizations,
-      ),
+    queries: profiledCompetitors.map((entity) =>
+      allCompanyOrganizationsQueryOptions(entity.id, fromYear, toYear, filters, showCompetitorOrganizations),
     ),
   });
+  const selectedCompetitor = showCompetitorOrganizations
+    ? competitorEntities.find(
+        (entity) =>
+          entityKey(entity) === params.get("selected") &&
+          !profiledCompetitors.some((profiled) => entityKey(profiled) === entityKey(entity)),
+      )
+    : undefined;
+  const selectedCompetitorProfile = useQuery(
+    allCompanyOrganizationsQueryOptions(
+      selectedCompetitor?.id,
+      fromYear,
+      toYear,
+      filters,
+      Boolean(selectedCompetitor),
+    ),
+  );
   const companyProfiles = new Map<string, CompanyProcurementProfile>();
   if (root?.type === "company" && companyData) companyProfiles.set(root.id, companyData);
-  competitorEntities.forEach((entity, index) => {
+  profiledCompetitors.forEach((entity, index) => {
     const profile = competitorProfiles[index];
     if (profile?.data && !profile.isPlaceholderData && !profile.isError)
       companyProfiles.set(entity.id, profile.data);
   });
+  if (selectedCompetitor?.id && selectedCompetitorProfile.data && !selectedCompetitorProfile.isError)
+    companyProfiles.set(selectedCompetitor.id, selectedCompetitorProfile.data);
   const rootQuery = useBatch
     ? networkQuery
     : root?.type === "field"
@@ -170,31 +196,52 @@ export function useNetworkExplorer() {
   const branches = useQueries({
     queries:
       root?.type === "organization"
-        ? children.map((child) => networkProfileQueryOptions(child, fromYear, toYear, filters))
+        ? children.slice(0, 10).map((child) => networkProfileQueryOptions(child, fromYear, toYear, filters))
         : [],
   });
-  const expanded = children.find((item) => entityKey(item) === params.get("expanded")) ?? children[0];
+  const branchesReady = branches.every((result) => !result.isPending);
+  const competitorProfilesReady = competitorProfiles.every((result) => !result.isPending);
+  const expandedChild =
+    root?.type === "organization" && !useBatch
+      ? children.find((item) => entityKey(item) === params.get("expanded"))
+      : undefined;
+  const expandedProfile = useQuery({
+    ...networkProfileQueryOptions(
+      expandedChild ?? { type: "company", id: "", name: "" },
+      fromYear,
+      toYear,
+      filters,
+      50,
+    ),
+    enabled: Boolean(expandedChild),
+  });
+  const expanded = expandedChild ?? children[0];
   const expansionQuery = {
-    isLoading: branches.some((result) => result.isLoading),
+    isLoading:
+      branches.some((result) => result.isLoading) || Boolean(expandedChild && expandedProfile.isLoading),
     isPlaceholderData: false,
-    isError: branches.some((result) => result.isError),
-    refetch: () => Promise.all(branches.filter((result) => result.isError).map((result) => result.refetch())),
+    isError: branches.some((result) => result.isError) || Boolean(expandedChild && expandedProfile.isError),
+    refetch: () =>
+      Promise.all([
+        ...branches.filter((result) => result.isError).map((result) => result.refetch()),
+        ...(expandedChild && expandedProfile.isError ? [expandedProfile.refetch()] : []),
+      ]),
   };
-  // Publish a complete two-hop graph instead of relaying each branch response to the layout.
-  // Failed branches settle too, so a partial result can still be explored and retried.
+  // Show the first hop immediately; publish the second hop once to avoid repeated layout jumps.
   const companyRelationsLoading =
     root?.type === "company" &&
     (competitors.isPending ||
-      (showCompetitorOrganizations && competitorProfiles.some((result) => result.isPending)));
+      (showCompetitorOrganizations &&
+        (competitorProfiles.some((result) => result.isPending) ||
+          Boolean(selectedCompetitor && selectedCompetitorProfile.isPending))));
   const graphLoading = useBatch
-    ? networkQuery.isPending || companyRelationsLoading
+    ? networkQuery.isPending
     : Boolean(
         root &&
         hasFieldSelection &&
-        (rootQuery.isLoading ||
-          rootQuery.isPlaceholderData ||
-          branches.some((result) => result.isPending) ||
-          companyRelationsLoading),
+        (root?.type === "company"
+          ? !companyData && !rootCompany.isError
+          : rootQuery.isLoading || rootQuery.isPlaceholderData),
       );
   const loadedBranches = branches.filter((result) => result.isSuccess || result.isError).length;
   const entities = new Map<string, ExplorerEntity>();
@@ -219,7 +266,11 @@ export function useNetworkExplorer() {
     addLink(actualRoot!, child, relationship);
   }
   children.forEach((child, index) => {
-    const result = branches[index];
+    if (!branchesReady) return;
+    const result =
+      expandedChild && entityKey(child) === entityKey(expandedChild) && expandedProfile.data
+        ? expandedProfile
+        : branches[index];
     if (!result?.data || result.isError) return;
     const relationships =
       "organization_relationships" in result.data
@@ -239,7 +290,7 @@ export function useNetworkExplorer() {
       if (actualRoot && entityKey(target) === entityKey(actualRoot)) continue;
       if (!entities.has(entityKey(target))) entities.set(entityKey(target), target);
       addLink(child, target, relationship);
-      if (++added >= 2) break;
+      if (++added >= (expandedChild && entityKey(child) === entityKey(expandedChild) ? 20 : 2)) break;
     }
   });
   if (hasFieldSelection && actualRoot?.type === "company") {
@@ -337,9 +388,14 @@ export function useNetworkExplorer() {
       }
     }
   }
-  if (actualRoot?.type === "company") {
+  if (actualRoot?.type === "company" && competitorProfilesReady) {
     competitorEntities.forEach((competitor, index) => {
-      const profile = competitorProfiles[index];
+      const profile =
+        index < profiledCompetitors.length
+          ? competitorProfiles[index]
+          : selectedCompetitor?.id === competitor.id
+            ? selectedCompetitorProfile
+            : undefined;
       if (!profile?.data || profile.isError || !("organization_relationships" in profile.data)) return;
       for (const relationship of profile.data.organization_relationships.filter(
         (item) => item.contract_event_count > 0,
@@ -426,13 +482,27 @@ export function useNetworkExplorer() {
       : expansionQuery,
     graphLoading,
     loadedBranches: useBatch ? batchChildren.length : loadedBranches,
+    enrichedChildrenCount: useBatch ? batchChildren.length : Math.min(children.length, 10),
     companyData,
     companyProfiles,
     organizationData,
     fieldData: fieldQuery.isError ? undefined : fieldQuery.data,
     competitorQuery: competitors,
-    competitorOrganizationError: competitorProfiles.some((result) => result.isError),
+    competitorOrganizationError:
+      competitorProfiles.some((result) => result.isError) ||
+      Boolean(selectedCompetitor && selectedCompetitorProfile.isError),
+    profiledCompetitorCount: profiledCompetitors.length,
     companyRelationsLoading,
+    additionalRelationsLoading: Boolean(
+      (root?.type === "company" &&
+        (rootCompany.isPending ||
+          competitors.isPending ||
+          (showCompetitorOrganizations &&
+            (!competitorProfilesReady ||
+              Boolean(selectedCompetitor && selectedCompetitorProfile.isPending))))) ||
+      (root?.type === "organization" && !useBatch && !branchesReady) ||
+      Boolean(expandedChild && expandedProfile.isPending),
+    ),
     snapshotId: useBatch ? networkQuery.data?.snapshot_id : undefined,
     networkTruncation: useBatch ? networkQuery.data?.truncation : undefined,
     networkUpdatedAt: useBatch ? networkQuery.data?.updated_at : undefined,
@@ -442,6 +512,7 @@ export function useNetworkExplorer() {
     categoryFields: categoryCatalog.data?.field_distribution ?? [],
     hasFieldSelection,
     nodeLimit,
+    usingNetworkSnapshot: useBatch,
     rootTotal: useBatch
       ? networkQuery.data?.summary?.node_count
       : root?.type === "company"

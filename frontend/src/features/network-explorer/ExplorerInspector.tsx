@@ -153,7 +153,7 @@ export function ExplorerInspector({
           <p className="text-xs text-muted-foreground">화면에 표시된 관계 기준 · 전체 분석은 별도 조회</p>
           <dl className="space-y-2">
             <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">표시된 관계 금액</dt>
+              <dt className="text-muted-foreground">표시된 관계 금액</dt>
               <dd className="font-semibold">
                 {visibleRelationships.some(
                   (item) => item.relationship.total_attributed_contract_amount != null,
@@ -163,7 +163,7 @@ export function ExplorerInspector({
               </dd>
             </div>
             <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">관계별 계약 건수</dt>
+              <dt className="text-muted-foreground">관계별 계약 건수</dt>
               <dd>{visibleCount}건</dd>
             </div>
           </dl>
@@ -200,17 +200,15 @@ export function ExplorerInspector({
           data.summary.amount_completeness !== "complete") && (
           <p className="text-xs text-amber-700 dark:text-amber-400">일부 실적·금액만 확인됐습니다.</p>
         )}
-      {data && (
-        <ExplorerProfileSections
-          entity={entity}
-          company={companyData}
-          organization={organizationData}
-          fromYear={fromYear}
-          toYear={toYear}
-          params={params}
-          onSelect={onSelect}
-        />
-      )}
+      <ExplorerProfileSections
+        entity={entity}
+        company={companyData}
+        organization={organizationData}
+        fromYear={fromYear}
+        toYear={toYear}
+        params={params}
+        onSelect={onSelect}
+      />
     </div>
   );
 }

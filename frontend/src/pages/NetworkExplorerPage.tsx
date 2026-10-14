@@ -116,6 +116,20 @@ function ExplorerWorkspace() {
       : 0;
   const shownCompetitors =
     root?.type === "company" ? view.links.filter((link) => link.kind === "competition").length : 0;
+  const competitorTotal =
+    view.competitorQuery.isPlaceholderData || view.competitorQuery.isError
+      ? undefined
+      : view.competitorQuery.data?.pagination.total_items;
+  const nextNodeLimit = [5, 10, 20, 50].find((limit) => limit > view.nodeLimit);
+  const canShowMore = Boolean(
+    root &&
+    nextNodeLimit &&
+    (root.type === "company"
+      ? competitorTotal != null && competitorTotal > view.nodeLimit
+      : view.usingNetworkSnapshot
+        ? view.networkTruncation?.truncated
+        : view.rootTotal != null && view.rootTotal > view.nodeLimit),
+  );
   const closePanel = () => view.update({ selected: undefined, selectedRelation: undefined });
   const panelOpen = Boolean(selected || selectedLink);
   const selectLink = (link: (typeof view.links)[number]) => {
@@ -382,9 +396,7 @@ function ExplorerWorkspace() {
                   {params.get("fieldName") ?? "분야 선택"}
                 </span>
                 <span className="hidden text-slate-400 lg:inline">
-                  {root?.type === "company"
-                    ? `계약기관 ${rootContractOrganizations}곳 · 경쟁사 ${shownCompetitors}/${view.competitorQuery.data?.pagination.total_items ?? 0}곳 · 그래프 전체 ${visibleEntities.length}곳`
-                    : `${visibleEntities.length}곳 · 거래 관계 ${visibleLinks.length}개`}
+                  화면 {visibleEntities.length}곳 · 관계 {visibleLinks.length}개
                 </span>
               </div>
               <div
@@ -440,11 +452,35 @@ function ExplorerWorkspace() {
                 ))}
               </div>
             </div>
-            {(entityView !== "all" || view.networkTruncation?.truncated) && (
-              <p className="pointer-events-none absolute left-4 top-16 z-10 text-[10px] text-slate-400">
-                {entityView !== "all" ? "다른 대상과 연결선은 숨김" : ""}
-                {entityView !== "all" && view.networkTruncation?.truncated ? " · " : ""}
-                {view.networkTruncation?.truncated ? "상위 관계만 표시" : ""}
+            {root && view.hasFieldSelection && !view.graphLoading && (
+              <p className="pointer-events-none absolute left-4 top-16 z-10 max-w-[calc(100%-32px)] rounded-md bg-[#0b1220]/85 px-2 py-1 text-[11px] text-slate-300">
+                화면 {visibleEntities.length}곳 / 불러온 {view.entities.length}곳
+                {root.type === "company"
+                  ? ` · 경쟁업체 ${shownCompetitors}/${competitorTotal ?? "확인 중"}곳 · 계약기관 ${rootContractOrganizations}곳${view.rootTotal == null ? "" : ` (기관 목록 ${view.rootTotal}곳)`}`
+                  : view.usingNetworkSnapshot
+                    ? ` · 관계 ${visibleLinks.length}개`
+                    : root.type === "organization"
+                      ? ` · 거래업체 ${view.children.length}곳${view.rootTotal == null ? "" : ` (업체 목록 ${view.rootTotal}곳)`}`
+                      : ` · 기관 ${view.entities.filter((entity) => entity.type === "organization").length}곳`}
+                {entityView !== "all" ? " · 다른 대상 숨김" : ""}
+                {root.type === "company" && !showCompetitorOrganizations ? " · 경쟁업체 기관 숨김" : ""}
+                {root.type === "company" &&
+                showCompetitorOrganizations &&
+                shownCompetitors > view.profiledCompetitorCount
+                  ? ` · 기관은 상위 ${view.profiledCompetitorCount}개 경쟁업체부터, 다른 업체는 선택해 보기`
+                  : ""}
+                {view.additionalRelationsLoading ? " · 다른 연결 확인 중" : ""}
+                {root.type === "organization" &&
+                !view.usingNetworkSnapshot &&
+                view.children.length > view.enrichedChildrenCount
+                  ? ` · 추가 기관은 상위 ${view.enrichedChildrenCount}개 업체부터, 다른 업체는 선택해 보기`
+                  : ""}
+                {root.type === "company" && rootQuery.isError && view.companyData
+                  ? " · 일부 기관 조회 실패"
+                  : ""}
+                {view.networkTruncation?.truncated
+                  ? ` · 조회 상한으로 ${view.networkTruncation.omitted_node_count ?? "일부"}곳 제외`
+                  : ""}
               </p>
             )}
             <div
@@ -465,27 +501,41 @@ function ExplorerWorkspace() {
                 <List className="size-3.5" />
                 <span className="hidden sm:inline">목록</span>
               </Button>
-              {(root?.type === "organization" || root?.type === "company") && (
-                <span className="h-4 w-px bg-slate-700" aria-hidden="true" />
-              )}
-              {(root?.type === "organization" || root?.type === "company") && (
+              {root && <span className="h-4 w-px bg-slate-700" aria-hidden="true" />}
+              {root && (
                 <select
-                  aria-label={root.type === "company" ? "표시할 경쟁 업체 수" : "표시할 거래 업체 수"}
+                  aria-label={
+                    root.type === "company"
+                      ? "표시할 경쟁 업체 수"
+                      : root.type === "organization"
+                        ? "표시할 거래 업체 수"
+                        : "표시할 기관 수"
+                  }
                   title={
                     root.type === "company"
                       ? "경쟁 업체를 몇 곳까지 표시할까요?"
-                      : "거래 업체를 몇 곳까지 표시할까요?"
+                      : root.type === "organization"
+                        ? "거래 업체를 몇 곳까지 표시할까요?"
+                        : "기관을 몇 곳까지 표시할까요?"
                   }
                   className="h-8 rounded-md bg-transparent pl-2 pr-1 text-xs text-slate-300 outline-offset-2"
                   value={view.nodeLimit}
                   onChange={(e) => view.changeFilters({ nodeLimit: e.target.value })}
                 >
-                  {[5, 10, 20].map((value) => (
+                  {[5, 10, 20, 50].map((value) => (
                     <option className="bg-slate-900 text-slate-200" value={value} key={value}>
                       상위 {value}개
                     </option>
                   ))}
                 </select>
+              )}
+              {canShowMore && nextNodeLimit && (
+                <button
+                  className="h-8 rounded-md px-2 text-xs font-medium text-sky-300 hover:bg-slate-700"
+                  onClick={() => view.update({ nodeLimit: String(nextNodeLimit) })}
+                >
+                  더 보기
+                </button>
               )}
             </div>
             {!view.graphLoading && view.hasFieldSelection && (
@@ -494,6 +544,7 @@ function ExplorerWorkspace() {
                 entityVisibility={entityView}
                 entities={graph.entities}
                 links={graph.links}
+                metricLinks={view.links}
                 selected={selected}
                 selectedRelation={selectedLink ? linkKey(selectedLink) : undefined}
                 onSelect={select}
@@ -534,7 +585,7 @@ function ExplorerWorkspace() {
                 </p>
               </div>
             )}
-            {root && rootQuery.isError && (
+            {root && rootQuery.isError && !(root.type === "company" && view.companyData) && (
               <div
                 role="alert"
                 className="absolute left-4 top-24 rounded-xl border bg-white p-4 text-sm text-slate-700"

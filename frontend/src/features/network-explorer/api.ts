@@ -117,20 +117,22 @@ export function allCompanyOrganizationsQueryOptions(
   enabled = true,
 ) {
   const base = { fromYear, toYear, ...filters, pageSize: 100 };
+  const firstPageKey = companyFirstPageQueryOptions(businessNumber, fromYear, toYear, filters).queryKey;
   return queryOptions({
     queryKey: ["explorer-all-company-organizations", businessNumber, base],
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, client }) => {
       const fetchPage = (page: number) =>
-        api<CompanyProcurementProfile>(
-          companyProcurementProfilePath(businessNumber!, { ...base, page }), { signal },
-        );
+        api<CompanyProcurementProfile>(companyProcurementProfilePath(businessNumber!, { ...base, page }), {
+          signal,
+        });
       const first = await fetchPage(1);
+      client.setQueryData(firstPageKey, first);
       const pages = [first];
       const totalPages = first.pagination?.total_pages ?? 1;
       // Fetch all filtered institutions without sending an unbounded burst of requests.
       for (let page = 2; page <= totalPages; page += 5) {
         const batch = Array.from({ length: Math.min(5, totalPages - page + 1) }, (_, index) => page + index);
-        pages.push(...await Promise.all(batch.map(fetchPage)));
+        pages.push(...(await Promise.all(batch.map(fetchPage))));
       }
       return {
         ...first,
@@ -140,6 +142,22 @@ export function allCompanyOrganizationsQueryOptions(
     enabled: Boolean(businessNumber) && enabled,
     staleTime: 10 * 60_000,
     retry: false,
+  });
+}
+
+export function companyFirstPageQueryOptions(
+  businessNumber: string | undefined,
+  fromYear: number,
+  toYear: number,
+  filters: { workType?: string; fieldCode?: string; largeCategory?: string; middleCategory?: string },
+) {
+  const base = { fromYear, toYear, ...filters, pageSize: 100 };
+  return queryOptions({
+    queryKey: ["explorer-company-first-page", businessNumber, base],
+    queryFn: ({ signal }) =>
+      api<CompanyProcurementProfile>(companyProcurementProfilePath(businessNumber!, base), { signal }),
+    enabled: false,
+    staleTime: 10 * 60_000,
   });
 }
 
@@ -234,14 +252,32 @@ export function networkQueryOptions(
 }
 export type FieldMarket = {
   field_code: string;
-  summary: { contract_count: number; total_attributed_contract_amount: number | null; missing_attributed_amount_count: number; organization_count: number | null; company_count: number | null };
-  yearly: Array<{ year: number; field_name?: string; company_count: number; organization_count: number; contract_count: number; total_attributed_contract_amount: number | null; missing_attributed_amount_count: number }>;
+  summary: {
+    contract_count: number;
+    total_attributed_contract_amount: number | null;
+    missing_attributed_amount_count: number;
+    organization_count: number | null;
+    company_count: number | null;
+  };
+  yearly: Array<{
+    year: number;
+    field_name?: string;
+    company_count: number;
+    organization_count: number;
+    contract_count: number;
+    total_attributed_contract_amount: number | null;
+    missing_attributed_amount_count: number;
+  }>;
   coverage: { is_full_market: boolean; sample?: boolean; missing_amount_count?: number };
   updated_at?: string;
 };
 export function fieldMarketQueryOptions(params: URLSearchParams, fromYear: number, toYear: number) {
   const fieldCode = params.get("field");
-  const search = new URLSearchParams({ field_code: fieldCode ?? "", from_year: String(fromYear), to_year: String(toYear) });
+  const search = new URLSearchParams({
+    field_code: fieldCode ?? "",
+    from_year: String(fromYear),
+    to_year: String(toYear),
+  });
   if (params.get("workType")) search.set("work_type", params.get("workType")!);
   return queryOptions({
     queryKey: ["explorer-field-market", search.toString()],

@@ -20,6 +20,7 @@ export function ExplorerGraph({
   root,
   entities,
   links,
+  metricLinks = links,
   selected,
   selectedRelation,
   onSelect,
@@ -33,6 +34,7 @@ export function ExplorerGraph({
   root?: ExplorerEntity;
   entities: ExplorerEntity[];
   links: ExplorerLink[];
+  metricLinks?: ExplorerLink[];
   selected?: ExplorerEntity;
   selectedRelation?: string;
   onSelect: (entity: ExplorerEntity) => void;
@@ -41,6 +43,10 @@ export function ExplorerGraph({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const instance = useRef<Core | null>(null);
+  const selectedId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    selectedId.current = selectedRelation ?? (selected ? entityKey(selected) : undefined);
+  }, [selected, selectedRelation]);
   const [hoveredNode, setHoveredNode] = useState<{
     name: string;
     scope?: string;
@@ -91,7 +97,7 @@ export function ExplorerGraph({
             "background-color": companyNode.backgroundColor,
             "border-color": companyNode.borderColor,
             "border-width": 1.5,
-            label: "data(label)",
+            label: "",
             color: "#e2e8f0",
             "font-size": 13,
             "min-zoomed-font-size": 8,
@@ -130,6 +136,7 @@ export function ExplorerGraph({
         {
           selector: 'node[center = "true"]',
           style: {
+            label: "data(label)",
             "border-width": 2.5,
             "text-max-width": "160px",
             "font-size": 15,
@@ -137,6 +144,10 @@ export function ExplorerGraph({
             "underlay-opacity": 0.22,
             "underlay-padding": 15,
           },
+        },
+        {
+          selector: 'node[prominent = "true"], node[scope = "co_bidder"], node:selected, node.hovered',
+          style: { label: "data(label)" },
         },
         {
           selector: 'node[center = "true"][kind = "field"]',
@@ -157,7 +168,7 @@ export function ExplorerGraph({
           style: {
             width: "data(lineWidth)",
             "line-color": "data(color)",
-            label: "data(label)",
+            label: "",
             "font-size": 10,
             "min-zoomed-font-size": 8,
             color: "#a8b8cc",
@@ -177,8 +188,9 @@ export function ExplorerGraph({
           style: { "line-style": "dashed" },
         },
         {
-          selector: "edge:selected",
+          selector: "edge:selected, edge.focus, edge.hovered",
           style: {
+            label: "data(label)",
             width: "data(selectedWidth)",
             "line-color": "#f8fafc",
             color: "#ffffff",
@@ -218,6 +230,7 @@ export function ExplorerGraph({
     });
     cy.on("mouseover", "node", (event) => {
       const node = event.target;
+      node.addClass("hovered");
       const position = node.renderedPosition();
       setHoveredNode({
         name: node.data("name"),
@@ -228,10 +241,30 @@ export function ExplorerGraph({
         y: position.y,
       });
     });
-    cy.on("mouseout", "node", () => setHoveredNode(null));
+    cy.on("mouseout", "node", (event) => {
+      event.target.removeClass("hovered");
+      setHoveredNode(null);
+    });
+    cy.on("mouseover", "edge", (event) => event.target.addClass("hovered"));
+    cy.on("mouseout", "edge", (event) => event.target.removeClass("hovered"));
+    let lastWidth = stage.clientWidth;
+    let lastHeight = stage.clientHeight;
     const observer = new ResizeObserver(() => {
+      const width = stage.clientWidth;
+      const height = stage.clientHeight;
+      if (width === lastWidth && height === lastHeight) return;
+      lastWidth = width;
+      lastHeight = height;
       cy.resize();
-      fitVisibleGraph(cy);
+      const focusId = selectedId.current;
+      const focus = focusId ? cy.getElementById(focusId) : undefined;
+      if (focus?.length && !focus.hasClass("hidden")) {
+        const position = focus.renderedPosition();
+        const margin = Math.min(64, width / 4);
+        const x = Math.max(margin, Math.min(width - margin, position.x));
+        const y = Math.max(margin, Math.min(height - margin, position.y));
+        cy.panBy({ x: x - position.x, y: y - position.y });
+      }
     });
     observer.observe(container.current);
     return () => {
@@ -241,7 +274,7 @@ export function ExplorerGraph({
       cy.destroy();
     };
   }, []);
-  const linkValues = links.map((link) => {
+  const metricValues = metricLinks.map((link) => {
     if ((link.kind ?? "contract") !== "contract") return undefined;
     const value =
       sizeMetric === "amount"
@@ -251,9 +284,9 @@ export function ExplorerGraph({
   });
   const totals = new Map<string, number>();
   const partialAmounts = new Set<string>();
-  links.forEach((link, index) => {
+  metricLinks.forEach((link, index) => {
     if ((link.kind ?? "contract") !== "contract") return;
-    const value = linkValues[index];
+    const value = metricValues[index];
     for (const entity of [link.source, link.target]) {
       const key = entityKey(entity);
       if (sizeMetric === "amount" && (value == null || link.relationship.amount_completeness !== "complete"))
@@ -262,18 +295,24 @@ export function ExplorerGraph({
     }
   });
   const nodeMax = Math.max(1, ...totals.values());
-  const edgeMax = Math.max(1, ...linkValues.map((value) => value ?? 0));
+  const edgeMax = Math.max(1, ...metricValues.map((value) => value ?? 0));
   const weight = (value: number | undefined, max: number) => (value == null ? 0 : Math.sqrt(value / max));
   // The visible circle area follows the contract amount. Keep only a small clickable minimum.
   const diameter = (value: number | undefined) =>
     value == null ? 18 : Math.max(18, 104 * Math.sqrt(value / nodeMax));
+  const prominent = new Set(
+    [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([key]) => key),
+  );
   const ranks = graphRanks(root, entities, links);
   const scopes = companyNodeScopes(root, entities, links);
   const elements: ElementDefinition[] = [
     ...entities.map((entity) => {
       const scope = scopes.get(entityKey(entity));
-      const typeLabel = (scope ? companyScopeLabels[scope] : undefined) ??
-        explorerNodePresentation[entity.type].label;
+      const typeLabel =
+        (scope ? companyScopeLabels[scope] : undefined) ?? explorerNodePresentation[entity.type].label;
       return {
         data: {
           id: entityKey(entity),
@@ -286,17 +325,34 @@ export function ExplorerGraph({
           metricValue: totals.get(entityKey(entity)),
           metricPartial: partialAmounts.has(entityKey(entity)) ? "true" : "false",
           metricKnown: totals.has(entityKey(entity)) ? "true" : "false",
+          prominent: prominent.has(entityKey(entity)) ? "true" : "false",
           kind: entity.type,
           center: root && entityKey(entity) === entityKey(root) ? "true" : "false",
         },
       };
     }),
-    ...links.map((link, index) => ({
+    ...links.map((link) => ({
       data: {
         id: linkKey(link),
         label: linkLabel(link),
-        lineWidth: 1.2 + 3 * weight(linkValues[index], edgeMax),
-        selectedWidth: 2.4 + 3 * weight(linkValues[index], edgeMax),
+        lineWidth:
+          1.2 +
+          3 *
+            weight(
+              sizeMetric === "amount"
+                ? link.relationship.total_attributed_contract_amount
+                : link.relationship.contract_event_count,
+              edgeMax,
+            ),
+        selectedWidth:
+          2.4 +
+          3 *
+            weight(
+              sizeMetric === "amount"
+                ? link.relationship.total_attributed_contract_amount
+                : link.relationship.contract_event_count,
+              edgeMax,
+            ),
         kind: link.kind ?? "contract",
         color: {
           contract: "#5e9caa",
@@ -315,6 +371,8 @@ export function ExplorerGraph({
   useEffect(() => {
     const cy = instance.current;
     if (!cy) return;
+    const hadElements = cy.elements().length > 0;
+    const previousZoom = cy.zoom();
     cy.elements().remove();
     cy.add(JSON.parse(graphIdentity));
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -332,8 +390,17 @@ export function ExplorerGraph({
       clockwise: true,
     });
     layout.run();
-    cy.nodes().filter((node) => node.data("center") === "true").lock();
-    fitVisibleGraph(cy);
+    cy.nodes()
+      .filter((node) => node.data("center") === "true")
+      .lock();
+    const focusId = selectedId.current;
+    const focus = focusId ? cy.getElementById(focusId) : undefined;
+    if (hadElements && focus?.length) {
+      cy.zoom(previousZoom);
+      cy.center(focus);
+    } else {
+      fitVisibleGraph(cy);
+    }
     const stage = container.current;
     let hovered = false;
     const enter = () => {
@@ -346,7 +413,10 @@ export function ExplorerGraph({
       const anchor = anchors.find((item) => item.node.id() === event.target.id());
       if (anchor) anchor.position = { ...event.target.position() };
     };
-    const anchors = cy.nodes().map((node, index) => ({ node, index, position: { ...node.position() } }));
+    const anchors = cy
+      .nodes()
+      .map((node, index) => ({ node, index, position: { ...node.position() } }))
+      .filter(({ node }) => node.data("prominent") === "true" || node.data("scope") === "co_bidder");
     let frame = 0;
     let last = 0;
     let elapsed = 0;
@@ -437,16 +507,41 @@ export function ExplorerGraph({
         }}
       />
       <div ref={container} className="relative h-full w-full" />
+      <div
+        className="pointer-events-none absolute bottom-14 left-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-[#132033]/90 px-2 py-1.5 text-[10px] text-slate-200"
+        aria-label="그래프 관계 범례"
+      >
+        <span className="flex items-center gap-1.5">
+          <i className="size-2 rounded-full bg-teal-400" />
+          업체
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="size-2 rounded-full bg-violet-400" />
+          기관
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="w-4 border-t-2 border-[#5e9caa]" />
+          계약
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="w-4 border-t-2 border-dashed border-[#a78bfa]" />
+          같은 입찰 참여
+        </span>
+        <span className="text-slate-400">노드 크기 · 확인된 계약금액</span>
+      </div>
       {hoveredNode && (
         <div
           className="pointer-events-none absolute z-20 max-w-60 rounded-lg border border-slate-600 bg-[#132033]/95 px-3 py-2 text-xs text-slate-100 shadow-lg"
           style={{ left: hoveredNode.x, top: hoveredNode.y, transform: "translate(12px, -110%)" }}
           role="status"
         >
-          {hoveredNode.scope && <div className="text-[10px] font-semibold text-sky-300">{hoveredNode.scope}</div>}
+          {hoveredNode.scope && (
+            <div className="text-[10px] font-semibold text-sky-300">{hoveredNode.scope}</div>
+          )}
           <div className="font-semibold">{hoveredNode.name}</div>
           <div className="mt-1 text-slate-300">
-            표시된 관계의 {sizeMetric === "amount" ? "계약금액" : "계약 건수"}: {hoveredNode.value == null
+            표시된 관계의 {sizeMetric === "amount" ? "계약금액" : "계약 건수"}:{" "}
+            {hoveredNode.value == null
               ? "확인되지 않음"
               : sizeMetric === "amount"
                 ? formatExactMoney(hoveredNode.value)
